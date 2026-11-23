@@ -28,7 +28,7 @@
 #define ANIM_FPS 45        /* fps al animar un giro: 45 gasta ~40% menos CPU que 60 y sigue fluido */
 #endif
 #ifndef STICKER_HALF
-#define STICKER_HALF 0.45f /* media pegatina: 0.45 = 90% de la celda, como csTimer */
+#define STICKER_HALF 0.435f /* media pegatina: 0.435 = 87% de la celda (csTimer usa 90%); deja ver mas las caras ocultas */
 #endif
 #ifndef BORDER
 #define BORDER 0.03f       /* grosor del borde negro */
@@ -398,16 +398,58 @@ static void rotate(float *v, int axis, float co, float si) {
     v[b] = va * si + vb * co;
 }
 
-static void quad(int ax, int s, float ca, float cb, float half, float lift, int rax, float co, float si, Color c) {
+/* esquinas en pantalla de una placa de media anchura hu x hv sobre la cara ax */
+static void quad(int ax, int s, float ca, float cb, float hu, float hv, int rax, float co, float si, float *q) {
     static const float su[4] = { -1, 1, 1, -1 }, sv[4] = { -1, -1, 1, 1 };
     int a = (ax + 1) % 3, b = (ax + 2) % 3;
-    float q[8], v[3];
+    float v[3];
     for (int k = 0; k < 4; k++) {
-        v[ax] = s * lift;
-        v[a] = ca + su[k] * half;
-        v[b] = cb + sv[k] * half;
+        v[ax] = s * 1.5f;
+        v[a] = ca + su[k] * hu;
+        v[b] = cb + sv[k] * hv;
         if (rax >= 0) rotate(v, rax, co, si);
         project(v, q + 2 * k);
+    }
+}
+
+static float dist2d(const float *p, const float *q) {
+    float dx = p[0] - q[0], dy = p[1] - q[1];
+    return sqrtf(dx * dx + dy * dy);
+}
+
+/* El borde negro mide lo mismo en 3D en todas las caras, pero en una cara muy
+ * inclinada la pegatina queda de pocos pixeles de ancho y el borde (suavizado,
+ * nunca menos de ~1 px) se come el color. Por eso el borde se adelgaza en la
+ * direccion en que la pegatina se ve angosta, y desaparece por debajo de
+ * BORDER_MIN_PX. El hueco transparente entre pegatinas no cambia. */
+#ifndef BORDER_MIN_PX
+#define BORDER_MIN_PX 8.0f
+#endif
+#ifndef BORDER_FULL_PX
+#define BORDER_FULL_PX 14.0f
+#endif
+static float border_for(float len) {
+    float k = (len - BORDER_MIN_PX) / (BORDER_FULL_PX - BORDER_MIN_PX);
+    return BORDER * (k < 0 ? 0 : k > 1 ? 1 : k);
+}
+
+static void sticker(int ax, int s, float ca, float cb, int rax, float co, float si, Color c) {
+    float q[8];
+    quad(ax, s, ca, cb, STICKER_HALF, STICKER_HALF, rax, co, si, q);
+    /* grosor en pantalla en cada direccion = area / largo de los lados paralelos
+     * (una cara inclinada se ve como un rombo aplastado: lados largos, grosor chico) */
+    float area = 0;
+    for (int k = 0; k < 4; k++) {
+        int j = (k + 1) & 3;
+        area += q[2 * k] * q[2 * j + 1] - q[2 * j] * q[2 * k + 1];
+    }
+    area = fabsf(area) * 0.5f;
+    float eu = (dist2d(q, q + 2) + dist2d(q + 6, q + 4)) * 0.5f;   /* lados en direccion u */
+    float ev = (dist2d(q + 2, q + 4) + dist2d(q, q + 6)) * 0.5f;   /* lados en direccion v */
+    float bu = border_for(ev > 0 ? area / ev : 0), bv = border_for(eu > 0 ? area / eu : 0);
+    if (bu > 0 || bv > 0) {
+        gfx_poly(q, 4, RGBA(0, 0, 0, 255));
+        quad(ax, s, ca, cb, STICKER_HALF - bu, STICKER_HALF - bv, rax, co, si, q);
     }
     gfx_poly(q, 4, c);
 }
@@ -444,8 +486,7 @@ static void draw_cube(void) {
         const Sticker *t = &vis[o];
         int ax = t->n[0] ? 0 : (t->n[1] ? 1 : 2), s = t->n[ax];
         int a = (ax + 1) % 3, b = (ax + 2) % 3;
-        quad(ax, s, t->p[a], t->p[b], STICKER_HALF, 1.5f, rax[o], co[o], si[o], RGBA(0, 0, 0, 255));
-        quad(ax, s, t->p[a], t->p[b], (STICKER_HALF - BORDER), 1.5f, rax[o], co[o], si[o], FACE_COL[t->col]);
+        sticker(ax, s, t->p[a], t->p[b], rax[o], co[o], si[o], FACE_COL[t->col]);
     }
 }
 
