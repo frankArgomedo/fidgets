@@ -12,8 +12,8 @@
 #define MSG_MAPA_CERRADO 3  /* teclas -> cubo: el usuario cerro el mapa a mano */
 
 /* tamano logico del mapa (lo usa el cubo para ponerlo a su lado) */
-#define TECLAS_W (4 + 15 + 9 * 21 + 20 + 4)
-#define TECLAS_H (4 + 4 * 25 - 3 + 4)
+#define TECLAS_W 240   /* cuadricula de 40 px: 6x3 modulos */
+#define TECLAS_H 120
 
 /* Mapa de teclas de csTimer, por codigo fisico (scan code set 1). */
 typedef struct { unsigned char scan; char label[3]; signed char ax, lo, hi, q, rot; } Key;

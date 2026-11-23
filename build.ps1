@@ -25,7 +25,9 @@ $libs = @("-luser32", "-lgdi32")
 $failed = 0
 Get-ChildItem (Join-Path $root "widgets") -Directory | Where-Object { -not $Only -or $_.Name -eq $Only } | ForEach-Object {
     $name = $_.Name
-    $src = @(Get-ChildItem $_.FullName -Filter *.c | ForEach-Object FullName) + (Join-Path $root "common\widget.c")
+    $c = @(Get-ChildItem $_.FullName -Filter *.c | ForEach-Object FullName)
+    if ($c.Count -eq 0) { return }   # carpeta aun sin codigo
+    $src = $c + (Join-Path $root "common\widget.c")
     $out = Join-Path $bin "$name.exe"
     & zig cc @flags @src @libs -o $out
     if ($LASTEXITCODE -ne 0) { Write-Host "FALLO  $name" -ForegroundColor Red; $failed++ }

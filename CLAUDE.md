@@ -28,7 +28,30 @@ menor consumo posible. Solo para Windows.
 
 ## Reglas para widgets nuevos
 
-- Tamaño lógico chico: lo normal son ~160×120 y como máximo unos 300×300.
+- Tamaño: cuadrícula de 40 px. Ancho y alto SIEMPRE múltiplos de 40 (160, 240, 320…;
+  80, 120, 160, 200…), con la forma que pida el contenido y lo más chico posible
+  (máximo ~320×320). Hoy: punto 160×120, cubo 160×200, mapa 240×120, teclear 320×120.
+  La base pega los widgets con imán, SIN separación, a los bordes de la pantalla y
+  entre sí (atrae a menos de 12 px; Shift al arrastrar lo desactiva); con medidas
+  múltiplos de 40 los bordes coinciden.
+- Margen OBLIGATORIO: el contenido visible queda al menos `MARGIN` (6 px) dentro del
+  borde del widget, en todos sus estados; ese margen es lo que separa a dos widgets
+  pegados. Los estados de menos de ~100 ms (p.ej. un giro del cubo) pueden usar el
+  margen, pero no salirse de la ventana.
+- Llenar la celda: el margen es el mínimo, no un relleno. El contenido se dibuja lo más
+  grande posible y, juntando todos sus estados, llega a ~6–10 px del borde en al menos
+  un eje (el otro queda centrado). Si cambia de forma (cámara del cubo), se dimensiona
+  por el caso más grande.
+- Cómo elegir el tamaño al crear un widget: 1) contenido mínimo legible; 2) la celda más
+  chica de la cuadrícula donde entra con su margen; 3) agrandar el contenido hasta
+  llenarla. Es demasiado chico si, llenando la celda, queda bajo algún mínimo; es
+  demasiado grande si cabría en una celda menor respetando los mínimos.
+- Mínimos de legibilidad (pensados para opacidad baja): texto principal 14 px, texto
+  secundario 11 px, zona para clicar 16×16 px, detalles de color ~10 px por lado.
+  Excepciones conocidas: etiquetas del mapa de teclas (8 y 10 px) y el punto que se
+  achica en `punto` (es la mecánica del juego).
+- Comprobar margen y llenado con `.\herramientas\llenado.ps1 [widget] [-Detalle]` (fotos
+  sin ventanas); al agregar un widget o un estado, agregar sus casos al script.
   Coordenadas en píxeles lógicos (la base escala según el DPI).
 - Sin panel de fondo por defecto (preferencia del usuario): `gfx_clear_hit()` deja el
   fondo invisible pero agarrable con cualquier opacidad. Los píxeles con alfa final 0
@@ -37,17 +60,23 @@ menor consumo posible. Solo para Windows.
 - La opacidad (menú o rueda del mouse, de 5 en 5) se aplica a todo el widget; el
   usuario la tiene casi siempre baja (~25%) y a veces la sube.
 - Pruebas visuales sin ventanas: `BORED_SNAPSHOT=archivo` (+ `BORED_KEYS=scan,scan…`,
-  `BORED_TICK_MS=n` para simular n ms de animación) dibuja una vez en un archivo y sale. Nunca abrir ventanas de prueba sobre la pantalla.
+  `BORED_TEXT=texto` para `on_char`, con `\b`, `\t` y `\n` como retroceso, Tab y Enter, `BORED_TICK_MS=n` para simular n ms de animación) dibuja una vez en un archivo y sale. Nunca abrir ventanas de prueba sobre la pantalla.
 - Consumo: `fps = 0` siempre que no haya animación. Usar `widget_set_fps(30)`
   solo mientras algo se mueve, volver a 0 al terminar, y llamar a `widget_redraw()`
   cuando cambie el estado. Evitar asignar memoria por frame.
 - `on_mouse` devuelve 0 en zonas "vacías" para que se pueda arrastrar la ventana.
 - No volver a implementar lo que ya da la base: arrastrar, el menú del clic derecho
-  (encima de todo, atenuar, opacidad, ocultar, cerrar), Esc o clic central para cerrar,
+  (encima de todo, atenuar, opacidad, ocultar, cerrar), clic central para cerrar,
   Ctrl+Alt+B para ocultar o mostrar todos y Ctrl+Alt+Q para cerrar todos.
 - Teclado: `on_key` recibe el scan code físico; úsalo para mapas de teclas
-  (independiente del idioma del teclado). Si devuelve 1, Esc ya no cierra el widget.
-  Opciones propias del widget: `menu` / `menu_checked` / `on_menu`.
+  (independiente del idioma del teclado). Esc NUNCA cierra un widget (preferencia del
+  usuario: se pulsa sin querer); cada widget puede usarlo, p.ej. para cancelar.
+  Para escribir texto usa `on_char` (carácter ya compuesto: tildes, ñ, mayúsculas).
+- Opciones propias del widget: `menu` / `menu_checked` / `on_menu`; `L">Título"` abre un
+  submenú, `L"<"` lo cierra y `L"-"` es un separador (los índices son posiciones del arreglo).
+- Colores: siempre de la paleta común `theme->text|sub|accent|error|extra` (base para
+  temas futuros), nunca colores sueltos para texto o avisos. `TEXT_MONO` = Consolas.
+- Datos grandes (listas, textos) en archivos junto al widget, incluidos con `#embed`.
 - Comunicación entre widgets: `widget_post(L"nombre", code, value)` (no bloquea; no hace
   nada si el otro no está abierto) y `on_message` en el receptor. Ej.: `cubo` avisa a
   `teclas` cada tecla usada. El mapa de teclas compartido está en `widgets/cubo/keymap.h`.

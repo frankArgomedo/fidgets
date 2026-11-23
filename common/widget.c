@@ -35,7 +35,7 @@ static uint32_t *px, *txtpx;
 static int PW, PH, S = 1;           /* tamano fisico y escala */
 static int fps, dirty, hidden, hover, own_hotkeys;
 static int topmost = 1, opacity = 100, dim = 0;
-static int close_by_user;           /* 1 si el usuario cerro este widget (Esc, clic central, menu) */
+static int close_by_user;           /* 1 si el usuario cerro este widget (clic central, menu) */
 static HANDLE timer;
 static int timer_period;            /* ms; 0 = apagado */
 static double last_tick;
@@ -104,6 +104,17 @@ static void find_ini(void) {
     if (GetFileAttributesW(ini_path) == INVALID_FILE_ATTRIBUTES && GetFileAttributesW(old) != INVALID_FILE_ATTRIBUTES)
         CopyFileW(old, ini_path, TRUE);
 }
+
+/* ---------------------------------------------------------------- tema */
+
+static const Theme default_theme = {
+    .text   = RGBA(240, 242, 248, 240),
+    .sub    = RGBA(150, 156, 170, 215),
+    .accent = RGBA(250, 190, 70, 240),
+    .error  = RGBA(235, 80, 80, 240),
+    .extra  = RGBA(160, 55, 60, 230),
+};
+const Theme *theme = &default_theme;
 
 /* ------------------------------------------------------------------ gfx */
 
@@ -237,25 +248,36 @@ void gfx_poly(const float *xy, int n, Color c) {
 
 /* Texto: GDI dibuja en blanco sobre negro en un buffer auxiliar y el gris
  * resultante se usa como cobertura. Asi se conserva el canal alfa. */
-static HFONT font_for(int size) {
-    static HFONT cache[4];
-    static int sizes[4], next;
-    for (int i = 0; i < 4; i++)
-        if (cache[i] && sizes[i] == size) return cache[i];
+static HFONT font_for(int size, int flags) {
+    static HFONT cache[6];
+    static int keys[6], next;
+    int key = size * 2 + ((flags & TEXT_MONO) != 0);
+    for (int i = 0; i < 6; i++)
+        if (cache[i] && keys[i] == key) return cache[i];
     if (cache[next]) DeleteObject(cache[next]);
-    cache[next] = CreateFontW(-size * S, 0, 0, 0, FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
+    int mono = (flags & TEXT_MONO) != 0;
+    cache[next] = CreateFontW(-size * S, 0, 0, 0, mono ? FW_NORMAL : FW_SEMIBOLD, 0, 0, 0, DEFAULT_CHARSET,
                               OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-                              DEFAULT_PITCH, L"Segoe UI");
-    sizes[next] = size;
+                              mono ? FIXED_PITCH : DEFAULT_PITCH, mono ? L"Consolas" : L"Segoe UI");
+    keys[next] = key;
     HFONT f = cache[next];
-    next = (next + 1) & 3;
+    next = (next + 1) % 6;
     return f;
+}
+
+int gfx_text_width(const wchar_t *s, int n, int size, int flags) {
+    if (n < 0) n = lstrlenW(s);
+    if (!n) return 0;
+    SelectObject(txtdc, font_for(size, flags));
+    SIZE ext;
+    GetTextExtentPoint32W(txtdc, s, n, &ext);
+    return (ext.cx + S - 1) / S;
 }
 
 void gfx_text(int x, int y, const wchar_t *s, Color c, int size, int align) {
     int len = lstrlenW(s);
     if (!len) return;
-    SelectObject(txtdc, font_for(size));
+    SelectObject(txtdc, font_for(size, align));
     SIZE ext;
     GetTextExtentPoint32W(txtdc, s, len, &ext);
     int tw = ext.cx < PW ? ext.cx : PW, th = ext.cy < PH ? ext.cy : PH;
@@ -378,9 +400,23 @@ static void show_menu(void) {
         AppendMenuW(op, MF_STRING | (opacity == levels[i] ? MF_CHECKED : 0), ID_OPA + levels[i], b);
     }
     if (D->menu) {
-        for (int i = 0; D->menu[i]; i++)
-            AppendMenuW(m, MF_STRING | (D->menu_checked && D->menu_checked(i) ? MF_CHECKED : 0),
-                        ID_CUSTOM + i, D->menu[i]);
+        HMENU stack[4] = { m };
+        int depth = 0;
+        for (int i = 0; D->menu[i]; i++) {
+            const wchar_t *t = D->menu[i];
+            if (t[0] == L'>' && depth < 3) {
+                HMENU sub = CreatePopupMenu();
+                AppendMenuW(stack[depth], MF_POPUP, (UINT_PTR)sub, t + 1);
+                stack[++depth] = sub;
+            } else if (t[0] == L'<' && !t[1]) {
+                if (depth) depth--;
+            } else if (t[0] == L'-' && !t[1]) {
+                AppendMenuW(stack[depth], MF_SEPARATOR, 0, NULL);
+            } else {
+                AppendMenuW(stack[depth], MF_STRING | (D->menu_checked && D->menu_checked(i) ? MF_CHECKED : 0),
+                            ID_CUSTOM + i, t);
+            }
+        }
         AppendMenuW(m, MF_SEPARATOR, 0, NULL);
     }
     AppendMenuW(m, MF_STRING | (topmost ? MF_CHECKED : 0), ID_TOP, L"Siempre encima");
@@ -390,7 +426,7 @@ static void show_menu(void) {
     AppendMenuW(m, MF_POPUP, (UINT_PTR)op, opl);
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
     AppendMenuW(m, MF_STRING, ID_HIDEALL, L"Ocultar todos\tCtrl+Alt+B");
-    AppendMenuW(m, MF_STRING, ID_CLOSE, L"Cerrar\tEsc");
+    AppendMenuW(m, MF_STRING, ID_CLOSE, L"Cerrar\tClic central");
     AppendMenuW(m, MF_STRING, ID_QUITALL, L"Cerrar todos\tCtrl+Alt+Q");
     POINT p;
     GetCursorPos(&p);
@@ -421,6 +457,68 @@ static void show_menu(void) {
         PostMessageW(HWND_BROADCAST, MSG_QUITALL, 0, 0);
     }
     if (cmd) save_state();
+}
+
+/* ---------------------------------------------------------------- iman
+ * Al arrastrar, el widget se pega (a menos de SNAP px) a los bordes del area de
+ * trabajo y a los otros widgets visibles: queda a GAP px de ellos y alinea sus
+ * bordes. Como los tamanos son multiplos de GRID, los bordes coinciden. */
+#define SNAP 12
+#define GAP 0           /* sin separacion: cada widget ya deja MARGIN por dentro */
+
+typedef struct { RECT *r; RECT others[32]; int n; } SnapCtx;
+
+static BOOL CALLBACK collect_widget(HWND w, LPARAM lp) {
+    SnapCtx *c = (SnapCtx *)lp;
+    wchar_t cls[32];
+    if (w == hwnd || !IsWindowVisible(w) || c->n >= 32) return TRUE;
+    if (!GetClassNameW(w, cls, 32) || lstrcmpW(cls, CLASS_NAME)) return TRUE;
+    GetWindowRect(w, &c->others[c->n++]);
+    return TRUE;
+}
+
+/* prueba un destino para un borde: guarda el desplazamiento mas chico dentro de SNAP */
+static void try_snap(int edge, int target, int *best) {
+    int d = target - edge;
+    if ((d < 0 ? -d : d) < (*best < 0 ? -*best : *best)) *best = d;
+}
+
+static void snap_rect(RECT *r) {
+    if (GetKeyState(VK_SHIFT) < 0) return;      /* Shift al arrastrar: sin iman */
+    int snap = SNAP * S, gap = GAP * S, inf = snap + 1;
+    int bx = inf, by = inf;
+    MONITORINFO mi = { sizeof mi };
+    GetMonitorInfoW(MonitorFromRect(r, MONITOR_DEFAULTTONEAREST), &mi);
+    RECT wa = mi.rcWork;
+    try_snap(r->left, wa.left + gap, &bx);
+    try_snap(r->right, wa.right - gap, &bx);
+    try_snap(r->top, wa.top + gap, &by);
+    try_snap(r->bottom, wa.bottom - gap, &by);
+
+    SnapCtx c = { r };
+    EnumWindows(collect_widget, (LPARAM)&c);
+    for (int i = 0; i < c.n; i++) {
+        RECT *o = &c.others[i];
+        /* solo widgets cercanos: que se toquen o casi (margen gap + snap) */
+        int m = gap + snap;
+        if (r->right < o->left - m || r->left > o->right + m || r->bottom < o->top - m || r->top > o->bottom + m) continue;
+        int side_by_side = r->bottom > o->top - snap && r->top < o->bottom + snap;   /* uno al lado del otro */
+        int stacked = r->right > o->left - snap && r->left < o->right + snap;         /* uno encima del otro */
+        if (side_by_side) {
+            try_snap(r->left, o->right + gap, &bx);     /* a su derecha */
+            try_snap(r->right, o->left - gap, &bx);     /* a su izquierda */
+            try_snap(r->top, o->top, &by);              /* alinear arriba */
+            try_snap(r->bottom, o->bottom, &by);        /* alinear abajo */
+        }
+        if (stacked) {
+            try_snap(r->top, o->bottom + gap, &by);     /* debajo */
+            try_snap(r->bottom, o->top - gap, &by);     /* encima */
+            try_snap(r->left, o->left, &bx);            /* alinear izquierda */
+            try_snap(r->right, o->right, &bx);          /* alinear derecha */
+        }
+    }
+    if (bx != inf) { r->left += bx; r->right += bx; }
+    if (by != inf) { r->top += by; r->bottom += by; }
 }
 
 static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
@@ -472,10 +570,13 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         show_menu();
         return 0;
     case WM_KEYDOWN: {
-        int handled = D->on_key && D->on_key((int)wp, (int)((lp >> 16) & 0xFF), (lp & (1 << 30)) ? 2 : 1);
-        if (!handled && wp == VK_ESCAPE) { close_by_user = 1; DestroyWindow(h); }
+        /* Esc NO cierra el widget (preferencia del usuario): es facil pulsarlo sin querer */
+        if (D->on_key) D->on_key((int)wp, (int)((lp >> 16) & 0xFF), (lp & (1 << 30)) ? 2 : 1);
         return 0;
     }
+    case WM_CHAR:
+        if (D->on_char) D->on_char((int)wp);
+        return 0;
     case WM_KEYUP:
         if (D->on_key) D->on_key((int)wp, (int)((lp >> 16) & 0xFF), 0);
         return 0;
@@ -491,6 +592,9 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         hover = 0;
         if (dim) dirty = 1;
         return 0;
+    case WM_MOVING:
+        snap_rect((RECT *)lp);
+        return TRUE;
     case WM_EXITSIZEMOVE:
         save_state();
         return 0;
@@ -583,6 +687,18 @@ int widget_run(const WidgetDesc *d) {
                 if (h >= 0) { v = v * 16 + h; have = 1; continue; }
                 if (have) { d->on_key(0, v, 1); v = 0; have = 0; }
                 if (!*p) break;
+            }
+        }
+        wchar_t text[1024];
+        if (d->on_char && GetEnvironmentVariableW(L"BORED_TEXT", text, 1024) > 0) {
+            if (d->on_focus) d->on_focus(1);
+            for (wchar_t *p = text; *p; p++) {
+                int ch = *p;
+                if (ch == L'\\' && p[1]) {
+                    p++;
+                    ch = *p == L'b' ? 8 : *p == L't' ? 9 : *p == L'n' ? 13 : *p;
+                }
+                d->on_char(ch);
             }
         }
         /* BORED_TICK_MS: tiempo simulado tras las teclas (por defecto 1000 ms), en pasos de 16 ms */

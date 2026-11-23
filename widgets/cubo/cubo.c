@@ -19,10 +19,10 @@
 #include <string.h>
 
 #define W 160   /* medido: el cubo ocupa ~139 px de ancho con cualquier camara */
-#define H 186
+#define H 200   /* cuadricula de 40 px: 4x5 modulos */
 #include <math.h>
 #define CX 80.0f
-#define CY 117.0f  /* el cubo queda justo debajo del tiempo */
+#define CY 118.0f  /* el cubo llena el ancho y queda debajo del tiempo */
 /* aspecto (se pueden cambiar al compilar con -D para probar variantes) */
 #ifndef ANIM_FPS
 #define ANIM_FPS 45        /* fps al animar un giro: 45 gasta ~40% menos CPU que 60 y sigue fluido */
@@ -357,7 +357,7 @@ static int key(int vk, int scan, int down) {
  * centro, mirando a (0, -0.075, 0). Por defecto esta de frente y 45 grados
  * por encima (se ven U y F). Las flechas la mueven en pasos de 7.5 grados
  * (hasta +-45), como en csTimer. El cubo mide 1 unidad (pegatina = 1/3). */
-#define FOCAL 225.0f            /* escala para que el cubo quepa entre el tiempo y las medias */
+#define FOCAL 261.0f            /* escala: en el angulo de camara mas ancho el cubo llega al margen */
 static int cam_t = 0, cam_p = 6; /* pasos de 7.5 grados */
 static float cpos[3], cr[3], cu[3], cf[3];
 
@@ -497,20 +497,20 @@ static void draw(void) {
     gfx_clear_hit(); /* sin panel: solo un fondo invisible para poder arrastrarlo */
 
     double now = now_seconds();
-    Color tc = RGBA(240, 242, 248, 240);
+    Color tc = theme->text;
     if (state == RUN) fmt(b, (int)((now - t0) * 1000));
     else if (state == INSPECT) {
         double e = now - t0;
-        if (e > 17) { lstrcpyW(b, L"DNF"); tc = RGBA(235, 80, 80, 240); }
-        else if (e > 15) { lstrcpyW(b, L"+2"); tc = RGBA(235, 80, 80, 240); }
-        else { wsprintfW(b, L"%d", 15 - (int)e); tc = RGBA(250, 190, 70, 240); }
+        if (e > 17) { lstrcpyW(b, L"DNF"); tc = theme->error; }
+        else if (e > 15) { lstrcpyW(b, L"+2"); tc = theme->error; }
+        else { wsprintfW(b, L"%d", 15 - (int)e); tc = theme->accent; }
     } else if (state == READY) lstrcpyW(b, L"0.00");
     else {
         fmt(b, last_ms < -1 ? 0 : last_ms);
         if (last_pen == 2000) lstrcatW(b, L"+");
-        if (last_ms == -1) tc = RGBA(235, 80, 80, 240);
+        if (last_ms == -1) tc = theme->error;
     }
-    gfx_text(W / 2, 4, b, tc, 28, ALIGN_CENTER | TEXT_SHADOW);
+    gfx_text(W / 2, -3, b, tc, 28, ALIGN_CENTER | TEXT_SHADOW);
 
     draw_cube();
 

@@ -13,9 +13,12 @@
 #include "keymap.h"
 #include <windows.h>
 
-#define CELL 20
+#define CELL 20          /* ancho de una tecla */
+#define CAPH 24          /* alto de una tecla */
 #define STRIDE 21
-#define ROWH 25
+#define ROWH 27
+#define OX 8             /* 8 + 15 + 9*21 + 20 + 8 = 240 (>= MARGIN) */
+#define OY 7             /* 7 + 3*27 + 24 + 8 = 120 */
 #define W TECLAS_W
 #define H TECLAS_H
 
@@ -93,15 +96,15 @@ static void draw(void) {
     update_names();
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 10; c++) {
-            int scan = ROW_SCAN[r] + c, x = 4 + ROW_OFF[r] + c * STRIDE, y = 4 + r * ROWH;
+            int scan = ROW_SCAN[r] + c, x = OX + ROW_OFF[r] + c * STRIDE, y = OY + r * ROWH;
             const Key *k = key_for(scan);
             Color cap = !k ? RGBA(40, 42, 48, 90) : (k->rot ? RGBA(55, 75, 135, 225) : RGBA(52, 55, 64, 230));
             if (flash[r][c] > 0) cap = mix(cap, RGBA(70, 210, 130, 250), flash[r][c]);
-            gfx_round_rect(x, y, CELL, 22, 3, cap);
-            gfx_text(x + 2, y, names[r][c], RGBA(175, 180, 192, k ? 220 : 120), 8, ALIGN_LEFT);
+            gfx_round_rect(x, y, CELL, CAPH, 3, cap);
+            gfx_text(x + 2, y, names[r][c], k ? theme->sub : RGBA(175, 180, 192, 120), 8, ALIGN_LEFT);
             if (k) {
                 wchar_t lb[3] = { (wchar_t)k->label[0], (wchar_t)k->label[1], 0 };
-                gfx_text(x + CELL / 2, y + 8, lb, RGBA(240, 242, 248, 245), 10, ALIGN_CENTER);
+                gfx_text(x + CELL / 2, y + 9, lb, theme->text, 10, ALIGN_CENTER);
             }
         }
 }

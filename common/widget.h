@@ -19,10 +19,15 @@
  * Atajos comunes (los da la base, no hay que programarlos):
  *   Arrastrar con clic izquierdo  -> mover (si el widget no consume el clic)
  *   Ctrl + arrastrar              -> mover siempre
+ *   (al mover hay iman: se pega a los bordes y a otros widgets, sin separacion; Shift lo evita)
  *   Clic derecho                  -> menu (encima de todo, opacidad, ocultar, cerrar)
- *   Clic central / Esc            -> cerrar este widget (Esc solo si on_key no lo consume)
+ *   Clic central                  -> cerrar este widget (Esc NO cierra: queda libre para el widget)
  *   Ctrl+Alt+B                    -> ocultar / mostrar TODOS los widgets
  *   Ctrl+Alt+Q                    -> cerrar TODOS los widgets
+ *
+ * Pruebas sin ventana: BORED_SNAPSHOT=archivo (dibuja una vez y sale), con
+ * BORED_KEYS (scan codes hex), BORED_TEXT (texto para on_char; "\b" = retroceso,
+ * "\t" = Tab, "\n" = Enter) y BORED_TICK_MS (tiempo simulado).
  */
 #ifndef BORED_WIDGET_H
 #define BORED_WIDGET_H
@@ -35,10 +40,26 @@ typedef uint32_t Color; /* 0xAARRGGBB, sin premultiplicar */
 enum { MOUSE_DOWN = 1, MOUSE_UP = 2 };
 enum { ALIGN_LEFT = 0, ALIGN_CENTER = 1, ALIGN_RIGHT = 2 };
 #define TEXT_SHADOW 4  /* combinar con la alineacion: sombra oscura de 1 px para fondos claros */
+#define TEXT_MONO 8    /* combinar: fuente monoespaciada (Consolas) en vez de Segoe UI */
+
+/* Margen OBLIGATORIO entre el borde del widget y su contenido visible. El iman
+ * pega los widgets sin separacion, asi que este margen es el que los separa. */
+#define MARGIN 6
+
+/* Paleta comun: todos los widgets usan estos colores para verse coherentes.
+ * (Base para temas futuros: cambiar la paleta cambia todos los widgets.) */
+typedef struct Theme {
+    Color text;     /* texto principal */
+    Color sub;      /* texto secundario / pendiente */
+    Color accent;   /* acento: cursor, cuenta regresiva, avisos */
+    Color error;    /* errores */
+    Color extra;    /* errores secundarios (p.ej. letras de mas) */
+} Theme;
+extern const Theme *theme;
 
 typedef struct WidgetDesc {
     const wchar_t *name;  /* identificador unico: seccion del .ini y mutex */
-    int w, h;             /* tamano logico (recomendado <= 300x300) */
+    int w, h;             /* tamano logico: multiplos de 40 (cuadricula comun), max ~320x320 */
     int fps;              /* 0 = solo redibuja cuando se pide (CPU ~0%) */
 
     void (*on_init)(void);
@@ -46,8 +67,12 @@ typedef struct WidgetDesc {
     void (*on_draw)(void);         /* dibujar con gfx_* */
     /* vk = tecla virtual (depende del idioma del teclado), scan = codigo fisico
      * (misma posicion en cualquier distribucion), down: 1 pulsada, 2 autorepeticion,
-     * 0 soltada. Devuelve 1 si la consumio (p.ej. Esc deja de cerrar el widget). */
+     * 0 soltada. Devuelve 1 si la consumio. */
     int  (*on_key)(int vk, int scan, int down);
+    /* caracter ya compuesto segun el teclado del usuario (WM_CHAR: tildes, n, mayusculas;
+     * tambien 8 = retroceso, 9 = Tab, 13 = Enter, 127 = Ctrl+retroceso). Se llama despues
+     * de on_key. Devuelve 1 si lo consumio. */
+    int  (*on_char)(int ch);
     /* devuelve 1 si consumio el clic; 0 deja que la base arrastre la ventana */
     int  (*on_mouse)(int x, int y, int ev);
     void (*on_hide)(int hidden);   /* aviso al ocultar/mostrar (p.ej. pausar) */
@@ -56,6 +81,8 @@ typedef struct WidgetDesc {
     void (*on_close)(int by_user);   /* al cerrarse; by_user = 1 si lo cerro el usuario a mano */
 
     /* Opciones propias en el menu del clic derecho (lista terminada en NULL). */
+    /* Entradas especiales: L">Titulo" abre un submenu, L"<" lo cierra, L"-" separador.
+     * on_menu / menu_checked reciben el indice de la entrada dentro del arreglo. */
     const wchar_t *const *menu;
     int  (*menu_checked)(int i);   /* 1 = mostrar marca; puede ser NULL */
     void (*on_menu)(int i);
@@ -88,6 +115,8 @@ void gfx_round_rect(int x, int y, int w, int h, int r, Color c);
 void gfx_circle(float cx, float cy, float r, Color c);
 void gfx_poly(const float *xy, int n, Color c); /* poligono CONVEXO, xy = x0,y0,x1,y1... */
 void gfx_text(int x, int y, const wchar_t *s, Color c, int size, int align);
+/* ancho logico de los primeros n caracteres de s (n < 0 = todo); flags: TEXT_MONO */
+int  gfx_text_width(const wchar_t *s, int n, int size, int flags);
 
 /* Utilidades. */
 uint32_t rnd(void);                /* xorshift, ya sembrado */

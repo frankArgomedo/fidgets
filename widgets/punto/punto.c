@@ -9,7 +9,8 @@
 
 #define W 160
 #define H 120
-#define TOP 22 /* franja superior para el marcador */
+#define TOP 24 /* franja superior para el marcador */
+#define R_MAX 13 /* radio maximo del punto */
 
 enum { IDLE, PLAY };
 static int state = IDLE, score, best, lives;
@@ -19,8 +20,8 @@ static void new_dot(void) {
     life_max = 1.6f - score * 0.03f;
     if (life_max < 0.55f) life_max = 0.55f;
     life = life_max;
-    dx = (float)rnd_range(14, W - 14);
-    dy = (float)rnd_range(TOP + 12, H - 12);
+    dx = (float)rnd_range(MARGIN + R_MAX, W - MARGIN - R_MAX);
+    dy = (float)rnd_range(TOP + R_MAX, H - MARGIN - R_MAX);
 }
 
 static void lose_life(void) {
@@ -41,7 +42,7 @@ static void tick(float dt) {
     if (life <= 0) lose_life();
 }
 
-static float dot_r(void) { return 4 + 9 * (life / life_max); }
+static float dot_r(void) { return 4 + (R_MAX - 4) * (life / life_max); }
 
 static int mouse(int x, int y, int ev) {
     if (ev != MOUSE_DOWN) return state == PLAY;
@@ -64,13 +65,15 @@ static int mouse(int x, int y, int ev) {
 
 static void draw(void) {
     wchar_t buf[32];
-    gfx_clear(0);
-    gfx_round_rect(0, 0, W, H, 12, RGBA(16, 18, 24, 175));
-    if (flash > 0) gfx_round_rect(0, 0, W, H, 12, RGBA(220, 60, 60, (int)(flash * 300)));
+    gfx_clear_hit();   /* sin panel: fondo invisible que igual se puede arrastrar */
+    if (flash > 0) {    /* fallo: un destello rojo suave dentro del margen */
+        Color e = theme->error;
+        gfx_round_rect(MARGIN, MARGIN, W - 2 * MARGIN, H - 2 * MARGIN, 10, (e & 0xFFFFFF) | ((Color)(int)(flash * 280) << 24));
+    }
 
     if (state == IDLE) {
         wsprintfW(buf, L"Mejor: %d", best);
-        gfx_text(W / 2, 8, buf, RGBA(200, 205, 215, 200), 12, ALIGN_CENTER);
+        gfx_text(W / 2, MARGIN + 2, buf, theme->sub, 12, ALIGN_CENTER | TEXT_SHADOW);
         gfx_circle(W / 2.0f, H / 2.0f + 8, 20, RGBA(90, 200, 140, 220));
         /* triangulo "play" hecho con rectangulos finos */
         for (int i = 0; i < 12; i++)
@@ -78,9 +81,9 @@ static void draw(void) {
         return;
     }
     wsprintfW(buf, L"%d", score);
-    gfx_text(10, 4, buf, RGBA(230, 232, 240, 230), 13, ALIGN_LEFT);
-    for (int i = 0; i < lives; i++) gfx_circle(W - 12 - i * 11, 12, 3.5f, RGBA(230, 90, 90, 220));
-    gfx_rect(8, TOP, W - 16, 1, RGBA(255, 255, 255, 25));
+    gfx_text(MARGIN + 2, MARGIN, buf, theme->text, 14, ALIGN_LEFT | TEXT_SHADOW);
+    for (int i = 0; i < lives; i++) gfx_circle(W - MARGIN - 6 - i * 11, MARGIN + 8, 3.5f, theme->error);
+    gfx_rect(MARGIN, TOP - 2, W - 2 * MARGIN, 1, RGBA(255, 255, 255, 40));
     float t = life / life_max;
     gfx_circle(dx, dy, dot_r(), RGBA((int)(255 - 120 * t), (int)(90 + 130 * t), 120, 235));
 }
