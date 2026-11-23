@@ -1,0 +1,13 @@
+# salida de build.ps1 (los .exe se publican como releases, no en el repo)
+bin/
+*.exe
+*.obj
+*.o
+*.pdb
+
+# ajustes locales y archivos de prueba
+*.ini
+*.bsnp
+
+# ajustes locales de Claude Code
+.claude/settings.local.json
