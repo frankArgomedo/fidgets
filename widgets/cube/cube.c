@@ -42,7 +42,8 @@
  *   Origen: mapa de teclas, flujo del timer, cámara y colores de csTimer (GPL-3.0;
  *     se tomaron la mecánica y las convenciones, no código). Solver de dos fases de
  *     Kociemba: implementación propia (twophase.c).
- *   Excepciones: —
+ *   Excepciones: memoria privada hasta 7 MB (tope común 2,5 MB): las tablas del
+ *     solver de dos fases ocupan ~3,7 MB y se arman al primer «mezclar».
  */
 #include "widget.h"
 #include "twophase.h"

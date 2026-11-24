@@ -162,9 +162,13 @@ velocidad que va a récord: `cube`, `typing`), *juego* (`dot`, puzles) u *otro*.
   - `FPS_EFFECT` 30: efectos (cambio de tamaño o color, destellos).
   - `FPS_CLOCK` 20: cronómetro con centésimas corriendo.
   - `FPS_COUNTER` 10: contadores en segundos.
-- Topes: .exe ≤ 128 KB (íconos incluidos). Memoria privada en reposo, CPU en reposo y
-  tiempo por frame animando: se fijan con `herramientas/consumo.ps1` (ver
-  «Verificación»). Quien supere un tope lo explica en su ficha (Excepciones).
+- Topes (medidos con `herramientas/consumo.ps1` el 2026-11-24, con margen):
+  - .exe ≤ 128 KB (íconos incluidos; `build.ps1` avisa).
+  - Memoria privada ≤ 2,5 MB (hoy 1,5–1,8 MB). Excepción: `cube` ≤ 7 MB (tablas del
+    solver, ~3,7 MB; hoy 5,3 MB).
+  - CPU en reposo: ≤ 5 ms en 3 s (hoy 0).
+  - Dibujo: ≤ 3 ms por frame en promedio (hoy 0,3–1,5 ms).
+  Quien supere un tope lo explica en su ficha (Excepciones) y en `consumo.ps1`.
 
 ### Persistencia (.ini)
 

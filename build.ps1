@@ -21,6 +21,7 @@ $flags = @(
     "-I", (Join-Path $root "common")
 )
 $libs = @("-luser32", "-lgdi32", "-lwtsapi32")
+$MAX_KB = 128   # tope del .exe (ver "Animacion y consumo" en CLAUDE.md)
 
 $failed = 0
 Get-ChildItem (Join-Path $root "widgets") -Directory | Where-Object { -not $Only -or $_.Name -eq $Only } | ForEach-Object {
@@ -31,7 +32,11 @@ Get-ChildItem (Join-Path $root "widgets") -Directory | Where-Object { -not $Only
     $out = Join-Path $bin "$name.exe"
     & zig cc @flags @src @libs -o $out
     if ($LASTEXITCODE -ne 0) { Write-Host "FALLO  $name" -ForegroundColor Red; $failed++ }
-    else { "{0,-12} {1,6:N1} KB" -f $name, ((Get-Item $out).Length / 1KB) }
+    else {
+        $kb = (Get-Item $out).Length / 1KB
+        if ($kb -gt $MAX_KB) { Write-Host ("{0,-12} {1,6:N1} KB  PASA EL TOPE DE {2} KB" -f $name, $kb, $MAX_KB) -ForegroundColor Yellow }
+        else { "{0,-12} {1,6:N1} KB" -f $name, $kb }
+    }
 }
 Remove-Item (Join-Path $bin "*.pdb") -ErrorAction SilentlyContinue
 exit $failed

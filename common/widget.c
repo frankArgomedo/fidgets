@@ -50,6 +50,10 @@ static UINT MSG_HIDEALL, MSG_QUITALL, MSG_REHOOK, MSG_USER, MSG_LANG;
 static LARGE_INTEGER qpf;
 static uint32_t rng_state = 2463534242u;
 static int snapshot;                /* modo foto: sin ventana, reloj simulado */
+static int measuring;               /* modo medición: ventana fuera de pantalla (consumo.ps1) */
+static wchar_t measure_path[MAX_PATH];
+static double render_total;         /* segundos dibujando, en modo medición */
+static int frames;
 static double snap_clock = 1000.0;
 
 /* ------------------------------------------------------------------ util */
@@ -473,6 +477,7 @@ int gfx_text_wrap(int x, int y, const wchar_t *s, Color c, int size, int align) 
 /* -------------------------------------------------------------- ventana */
 
 static void render(void) {
+    double t = measuring ? now_seconds() : 0;
     dirty = 0;
     if (D->on_draw) D->on_draw();
     unsigned a = (unsigned)opacity * 255 / 100;
@@ -481,6 +486,18 @@ static void render(void) {
     POINT src = { 0, 0 };
     SIZE sz = { PW, PH };
     UpdateLayeredWindow(hwnd, NULL, NULL, &sz, memdc, &src, 0, &bf, ULW_ALPHA);
+    if (measuring) { render_total += now_seconds() - t; frames++; }
+}
+
+/* modo medición: al cerrar, cuántos frames se dibujaron y cuánto tardaron en total */
+static void write_measure(void) {
+    HANDLE f = CreateFileW(measure_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    char b[64];
+    int n = wsprintfA(b, "frames=%d\r\nrender_us=%d\r\n", frames, (int)(render_total * 1e6));
+    DWORD wr;
+    WriteFile(f, b, (DWORD)n, &wr, NULL);
+    CloseHandle(f);
 }
 
 void widget_redraw(void) { dirty = 1; }
@@ -813,6 +830,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_DESTROY:
         WTSUnRegisterSessionNotification(h);
+        if (measuring) write_measure();
         save_state();
         if (D->on_close) D->on_close(close_by_user);
         if (own_hotkeys) {
@@ -968,7 +986,11 @@ int widget_run(const WidgetDesc *d) {
 
     wchar_t snap[MAX_PATH];
     snapshot = GetEnvironmentVariableW(L"FIDGETS_SNAPSHOT", snap, MAX_PATH) > 0;
-    if (!snapshot && already_running()) return 0;
+    /* Modo medición (FIDGETS_MEASURE=archivo): ventana real pero fuera de todos los
+     * monitores, sin atajos globales y con otro título (no choca con un widget abierto
+     * del mismo nombre); al cerrarse escribe frames y tiempo de dibujo en el archivo. */
+    measuring = !snapshot && GetEnvironmentVariableW(L"FIDGETS_MEASURE", measure_path, MAX_PATH) > 0;
+    if (!snapshot && !measuring && already_running()) return 0;
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
     S = ((int)GetDpiForSystem() + 48) / 96;
@@ -1008,6 +1030,10 @@ int widget_run(const WidgetDesc *d) {
     int x = cfg_get_int(L"x", wa.right - PW - 24), y = cfg_get_int(L"y", wa.bottom - PH - 24);
     RECT wr = { x, y, x + PW, y + PH };
     if (!MonitorFromRect(&wr, MONITOR_DEFAULTTONULL)) { x = wa.right - PW - 24; y = wa.bottom - PH - 24; }
+    if (measuring) {   /* a la izquierda de todo el escritorio virtual */
+        x = GetSystemMetrics(SM_XVIRTUALSCREEN) - PW - 200;
+        y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    }
 
     memdc = make_dib(PW, PH, &px);
     txtdc = make_dib(PW, PH, &txtpx);
@@ -1025,7 +1051,8 @@ int widget_run(const WidgetDesc *d) {
     RegisterClassExW(&wc);
 
     hwnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | (topmost ? WS_EX_TOPMOST : 0),
-                           CLASS_NAME, d->name, WS_POPUP, x, y, PW, PH, NULL, NULL, inst, NULL);
+                           CLASS_NAME, measuring ? L"fidgets-measure" : d->name, WS_POPUP, x, y, PW, PH,
+                           NULL, NULL, inst, NULL);
     if (!hwnd) return 1;
     WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);   /* bloqueo de sesión */
 
@@ -1036,7 +1063,7 @@ int widget_run(const WidgetDesc *d) {
     if (d->on_init) d->on_init();
     render();
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-    try_hotkeys();
+    if (!measuring) try_hotkeys();
     update_timer();
 
     MSG m;
