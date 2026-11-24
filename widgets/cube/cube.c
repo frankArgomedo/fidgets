@@ -699,12 +699,6 @@ static void on_menu(int i) {
 
 static void focus(int f) { focused = f; }
 static void init(void) {
-    /* TEMPORAL (quitar antes de publicar): claves y mapa del nombre provisional */
-    cfg_rename(L"inspeccion", L"inspection");
-    cfg_rename(L"giro_ms", L"turn_ms");
-    cfg_rename(L"mapa", L"map");
-    cfg_migrate_section(L"keys", L"cubo", L"teclas");
-
     reset_cube();
     sync_vis();
     load_stats();
@@ -725,7 +719,6 @@ int main(void) {
         .on_message = message, .on_close = closed,
         .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
         .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu, .help = HELP,
-        .legacy_ini = L"cubo",
     };
     return widget_run(&d);
 }

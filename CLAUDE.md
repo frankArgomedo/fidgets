@@ -5,12 +5,10 @@ en pantalla de forma discreta: pequeños, sin bordes, con transparencia y con el
 menor consumo posible. Solo para Windows. El nombre juega con *fidget* (juguetear
 para matar el rato) y *widgets*.
 
-> **Transición (temporal).** Estas reglas se acordaron el 2026-11-24 y el código
-> todavía no las cumple todas (ya está renombrado a `fidgets`; la carpeta del proyecto
-> y el repositorio de GitHub aún se llaman `bored`). Lo que falta aplicar está en
-> `PENDIENTES-REGLAS.md`. El código marcado TEMPORAL migra los ajustes de
-> `%APPDATA%\bored` y se quita antes de publicar. Al terminar, se borran ese archivo
-> y esta nota.
+> **Transición (temporal).** El código ya cumple estas reglas (acordadas el
+> 2026-11-24); falta renombrar la carpeta del proyecto y el repositorio de GitHub,
+> que aún se llaman `bored`, y fusionar la rama. Lo pendiente está en
+> `PENDIENTES-REGLAS.md`. Al terminar, se borran ese archivo y esta nota.
 
 ## Restricciones (no se negocian)
 

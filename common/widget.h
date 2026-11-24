@@ -136,12 +136,6 @@ typedef struct WidgetDesc {
     int  (*menu_checked)(int i);   /* CHECK_…; puede ser NULL */
     void (*on_menu)(int i);
     const int *help;               /* «Controles ▸»: ids de texto, terminado en 0 */
-
-    /* TEMPORAL (quitar antes de publicar): de dónde migrar los ajustes del nombre
-     * provisional "bored": %APPDATA%\bored\<legacy_ini>.ini, sección legacy_section
-     * (NULL = la de nombre legacy_ini, el nombre viejo del widget). */
-    const wchar_t *legacy_ini;
-    const wchar_t *legacy_section;
 } WidgetDesc;
 
 int  widget_run(const WidgetDesc *d);
@@ -167,12 +161,6 @@ void cfg_delete_prefix(const wchar_t *prefix);   /* borra las claves que empieza
 /* lo mismo para la sección de otro widget del mismo programa */
 int  cfg_get_int_in(const wchar_t *section, const wchar_t *key, int def);
 void cfg_set_int_in(const wchar_t *section, const wchar_t *key, int value);
-/* TEMPORAL (quitar antes de publicar): renombra una clave de la sección del widget si
- * la nueva aún no existe; 1 si la renombró. */
-int  cfg_rename(const wchar_t *old_key, const wchar_t *new_key);
-/* TEMPORAL: copia una sección de %APPDATA%\bored\<legacy_ini>.ini si aún no existe
- * (la base ya lo hace con la del widget; sirve para la de un acompañante). */
-void cfg_migrate_section(const wchar_t *section, const wchar_t *legacy_ini, const wchar_t *legacy_section);
 
 /* Dibujo sobre el buffer de la ventana. */
 void gfx_clear(Color c);

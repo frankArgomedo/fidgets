@@ -614,30 +614,13 @@ static void save_cfg(void) {
     cfg_set_int(L"difficulty", diff);
 }
 
-static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
-
 /* posicion de v en a[0..n-1]; def si no esta */
 static int index_of(const int *a, int n, int v, int def) {
     for (int i = 0; i < n; i++) if (a[i] == v) return i;
     return def;
 }
 
-/* TEMPORAL (quitar antes de publicar): claves del nombre provisional "teclear".
- * tiempo, palabras y lista guardaban la posicion en el menu; ahora el valor real. */
-static void migrate_cfg(void) {
-    if (cfg_rename(L"tiempo", L"time")) cfg_set_int(L"time", TIMES[clampi(cfg_get_int(L"time", 1), 0, 3)]);
-    if (cfg_rename(L"palabras", L"words")) cfg_set_int(L"words", COUNTS[clampi(cfg_get_int(L"words", 1), 0, 3)]);
-    if (cfg_rename(L"lista", L"list")) cfg_set_int(L"list", cfg_get_int(L"list", 0) ? 1000 : 200);
-    cfg_rename(L"modo", L"mode");
-    cfg_rename(L"idioma", L"lang");
-    cfg_rename(L"puntuacion", L"punctuation");
-    cfg_rename(L"numeros", L"numbers");
-    cfg_rename(L"sintildes", L"no_accents");
-    cfg_rename(L"dificultad", L"difficulty");
-}
-
 static void load_cfg(void) {
-    migrate_cfg();
     mode = cfg_get_range(L"mode", MODE_TIME, 0, 1);
     time_i = index_of(TIMES, 4, cfg_get_choice(L"time", 30, TIMES, 4), 1);
     count_i = index_of(COUNTS, 4, cfg_get_choice(L"words", 25, COUNTS, 4), 1);
@@ -682,7 +665,6 @@ int main(void) {
         .on_hide = hide, .on_focus = focus,
         .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
         .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu, .help = HELP,
-        .legacy_ini = L"teclear",
     };
     return widget_run(&d);
 }

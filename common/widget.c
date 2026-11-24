@@ -118,34 +118,10 @@ void cfg_set_int_in(const wchar_t *section, const wchar_t *key, int value) {
     WritePrivateProfileStringW(section, key, buf, ini_path);
 }
 
-/* TEMPORAL (quitar antes de publicar): renombra una clave de la seccion del widget
- * si la nueva aun no existe. Devuelve 1 si la renombro. */
-int cfg_rename(const wchar_t *old_key, const wchar_t *new_key) {
-    wchar_t v[64];
-    if (GetPrivateProfileStringW(D->name, new_key, L"", v, 64, ini_path) > 0) return 0;
-    if (GetPrivateProfileStringW(D->name, old_key, L"", v, 64, ini_path) == 0) return 0;
-    WritePrivateProfileStringW(D->name, new_key, v, ini_path);
-    WritePrivateProfileStringW(D->name, old_key, NULL, ini_path);
-    return 1;
-}
-
 /* Ajustes en %APPDATA%\fidgets\<nombre del exe>.ini, asi el programa puede estar en
  * cualquier carpeta (incluso una sin permiso de escritura). FIDGETS_INI=ruta lo
  * reemplaza (pruebas). */
 #define CONFIG_DIR L"fidgets"
-
-/* TEMPORAL (quitar antes de publicar): migracion desde el nombre provisional "bored".
- * Si la seccion del widget aun no existe, se copia la de
- * %APPDATA%\bored\<legacy_ini>.ini (seccion legacy_section). */
-void cfg_migrate_section(const wchar_t *section, const wchar_t *legacy_ini, const wchar_t *legacy_section) {
-    static wchar_t buf[8192];
-    wchar_t appdata[MAX_PATH], old[MAX_PATH];
-    if (!legacy_ini || !GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH)) return;
-    if (GetPrivateProfileSectionW(section, buf, 8192, ini_path) > 0) return;
-    wsprintfW(old, L"%s\\bored\\%s.ini", appdata, legacy_ini);
-    DWORD n = GetPrivateProfileSectionW(legacy_section ? legacy_section : legacy_ini, buf, 8192, old);
-    if (n > 0 && n < 8190) WritePrivateProfileSectionW(section, buf, ini_path);
-}
 
 static void find_ini(void) {
     if (GetEnvironmentVariableW(L"FIDGETS_INI", ini_path, MAX_PATH) > 0) return;
@@ -165,7 +141,6 @@ static void find_ini(void) {
     lstrcatW(ini_path, L"\\");
     lstrcatW(ini_path, base);
     lstrcatW(ini_path, L".ini");
-    cfg_migrate_section(D->name, D->legacy_ini, D->legacy_section);
 }
 
 /* ---------------------------------------------------------------- tema */

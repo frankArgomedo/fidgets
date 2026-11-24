@@ -181,7 +181,6 @@ int main(void) {
         .on_mouse = mouse, .on_hide = hide,
         .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
         .menu = MENU, .on_menu = on_menu, .help = HELP,
-        .legacy_ini = L"punto",
     };
     return widget_run(&d);
 }

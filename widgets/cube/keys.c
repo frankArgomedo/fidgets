@@ -136,7 +136,6 @@ int keys_main(void) {
         .on_init = init, .on_tick = tick, .on_draw = draw, .on_key = key, .on_message = message,
         .on_close = closed,
         .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
-        .legacy_ini = L"cubo", .legacy_section = L"teclas",
     };
     return widget_run(&d);
 }
