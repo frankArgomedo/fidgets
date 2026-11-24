@@ -363,7 +363,13 @@ Nunca abrir ventanas de prueba sobre la pantalla.
 ## Publicación
 
 Etapas: 1) widgets independientes + ajustes en `%APPDATA%` (hecho); 2) publicar en
-GitHub y luego winget; 3) si crece, un centro de widgets con catálogo.
+GitHub (hecho: repo público, releases con .zip); 3) si crece, un centro de widgets con
+catálogo.
+
+- winget, pospuesto: por ahora solo se ofrecen los .zip del release. Un portable de
+  winget no aparece en el menú Inicio, lo que estorba a widgets con ventana. Si se
+  retoma: un paquete por widget (`frankArgomedo.fidgets.<nombre>`) con alias
+  `fidgets-<nombre>` para no ocupar nombres genéricos en el PATH.
 
 - Una sola versión para todo el proyecto (SemVer desde `0.1.0`, tags `vX.Y.Z`), en el
   archivo `VERSION`. `build.ps1` le pone a cada .exe su `VERSIONINFO` (versión,
