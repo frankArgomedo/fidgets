@@ -1,0 +1,3 @@
+# Datos incluidos en los .exe con #embed: siempre LF, asi el .exe sale igual con
+# cualquier configuracion de git (core.autocrlf)
+*.txt text eol=lf
