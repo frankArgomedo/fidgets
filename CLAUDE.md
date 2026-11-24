@@ -5,11 +5,6 @@ en pantalla de forma discreta: pequeños, sin bordes, con transparencia y con el
 menor consumo posible. Solo para Windows. El nombre juega con *fidget* (juguetear
 para matar el rato) y *widgets*.
 
-> **Transición (temporal).** El código ya cumple estas reglas (acordadas el
-> 2026-11-24) y el repositorio ya es `frankArgomedo/fidgets`; falta renombrar la
-> carpeta del proyecto, que aún se llama `bored`. Lo pendiente está en
-> `PENDIENTES-REGLAS.md`. Al terminar, se borran ese archivo y esta nota.
-
 ## Restricciones (no se negocian)
 
 - Solo Windows.
@@ -225,7 +220,8 @@ velocidad que va a récord: `cube`, `typing`), *juego* (`dot`, puzles) u *otro*.
 Sin sonido por defecto. Un widget puede ofrecerlo solo para avisos que importan cuando
 no estás mirando (8 y 12 s de la inspección, un temporizador que termina), nunca como
 adorno. Opción desactivada por defecto, en el menú; suena con `widget_beep` (tonos
-cortos generados, sin archivos de audio).
+cortos generados, sin archivos de audio; se programa en la base cuando un widget lo
+necesite).
 
 ### Idiomas y textos
 
