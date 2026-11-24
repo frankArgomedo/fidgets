@@ -1,11 +1,11 @@
 /*
- * cubo - timer de speedcubing con cubo virtual 3x3 manejado con el teclado.
+ * cube - timer de speedcubing con cubo virtual 3x3 manejado con el teclado.
  *
  * Mapa de teclas y flujo del timer tomados de csTimer (modo "virtual"):
  *   Espacio  -> mezcla (y, si esta activa, inspeccion de 15 s)
  *   El primer giro que no sea rotacion arranca el tiempo; al resolver se detiene.
  *   Esc      -> aborta (durante el tiempo cuenta como DNF)
- *   El mapa de teclas esta en el widget aparte "teclas".
+ *   El mapa de teclas esta en el widget aparte "keys".
  * Las teclas se leen por POSICION fisica (scan code), asi el mapa es el mismo
  * con teclado espanol/latino que con uno en ingles (la tecla de la n es ";").
  *
@@ -101,14 +101,14 @@ static void do_move(int ax, int lo, int hi, int q) { move_on(st, ax, lo, hi, q);
 /* ------------------------------------------------------------ animacion
  * Como csTimer: el estado logico (st) cambia al instante con cada tecla, asi el
  * tiempo y la deteccion de resuelto son exactos. El estado visual (vis) va
- * detras: cada giro entra a una cola y se anima durante giro_ms. Si la cola se
+ * detras: cada giro entra a una cola y se anima durante turn_ms. Si la cola se
  * llena, la velocidad sube x(en_cola + 2) / 2. Giros del mismo eje seguidos
  * (R y L, U y D...) se animan a la vez. */
 typedef struct { signed char ax, lo, hi, q; } Move;
 static Sticker vis[54];
 static Move queue[64], active[8];
 static float prog[8];
-static int nq, nact, giro_ms = 100;
+static int nq, nact, turn_ms = 100;
 
 static void sync_vis(void) { memcpy(vis, st, sizeof vis); nq = nact = 0; }
 static int animating(void) { return nact > 0 || nq > 0; }
@@ -121,7 +121,7 @@ static void start_next(void) {
 
 static void anim_push(int ax, int lo, int hi, int q) {
     Move m = { (signed char)ax, (signed char)lo, (signed char)hi, (signed char)q };
-    if (giro_ms <= 0 || nq == 64) {             /* instantaneo o cola llena: aplicar todo ya */
+    if (turn_ms <= 0 || nq == 64) {             /* instantaneo o cola llena: aplicar todo ya */
         for (int i = 0; i < nact; i++) move_on(vis, active[i].ax, active[i].lo, active[i].hi, active[i].q);
         for (int i = 0; i < nq; i++) move_on(vis, queue[i].ax, queue[i].lo, queue[i].hi, queue[i].q);
         nq = nact = 0;
@@ -134,7 +134,7 @@ static void anim_push(int ax, int lo, int hi, int q) {
 
 static void anim_tick(float dt) {
     if (!nact) return;
-    float step = dt * 1000.0f / (float)giro_ms * (float)(nq + 2) / 2.0f;
+    float step = dt * 1000.0f / (float)turn_ms * (float)(nq + 2) / 2.0f;
     if (step > 1) step = 1;
     for (int i = 0; i < nact; i++) prog[i] += step;
     while (nact && prog[0] >= 1) {               /* el primero termino: fijarlo en vis */
@@ -227,7 +227,7 @@ static void load_stats(void) {
         times[ntimes++] = v;
     }
     best = cfg_get_int(L"best", 0);
-    use_ins = cfg_get_int(L"inspeccion", 0);
+    use_ins = cfg_get_int(L"inspection", 0);
 }
 
 static void save_stats(void) {
@@ -346,7 +346,7 @@ static int key(int vk, int scan, int down) {
     if (GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_MENU) < 0) return 0;
     const Key *k = key_for(scan);
     if (!k) return 0;
-    widget_post(L"teclas", MSG_TECLA_USADA, scan);   /* resalta la tecla si "teclas" esta abierto */
+    widget_post(L"keys", MSG_KEY_USED, scan);   /* resalta la tecla si "keys" esta abierto */
     double now = now_seconds();
     if ((state == INSPECT || state == READY) && !k->rot) start_solve(now);
     do_move(k->ax, k->lo, k->hi, k->q);
@@ -526,29 +526,29 @@ static void draw(void) {
 }
 
 /* ------------------------------------------------------------ mapa de teclas
- * El mapa ("teclas") es un acompanante: el mismo cubo.exe abierto con --teclas.
+ * El mapa ("keys") es un acompanante: el mismo cube.exe abierto con --keys.
  * Se activa desde el menu, se recuerda, y se cierra cuando se cierra el cubo. */
-int teclas_main(void);
-static int mapa;
+int keys_main(void);
+static int map_on;
 
 static void open_map(void) {
     int x, y, w, h;
     if (!widget_rect(&x, &y, &w, &h)) return;      /* modo foto: no hay ventana */
-    if (cfg_get_int_in(L"teclas", L"x", -99999) == -99999) {
+    if (cfg_get_int_in(L"keys", L"x", -99999) == -99999) {
         /* primera vez: a la izquierda del cubo (o a la derecha si no cabe), alineado abajo */
         RECT r = { x, y, x + w, y + h };
         MONITORINFO mi = { sizeof mi };
         GetMonitorInfoW(MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &mi);
-        int tw = TECLAS_W * w / W, th = TECLAS_H * h / H;
+        int tw = KEYS_W * w / W, th = KEYS_H * h / H;
         int tx = x - tw - 8;
         if (tx < mi.rcWork.left) tx = x + w + 8;
-        cfg_set_int_in(L"teclas", L"x", tx);
-        cfg_set_int_in(L"teclas", L"y", y + h - th);
-        cfg_set_int_in(L"teclas", L"opacity", cfg_get_int(L"opacity", 100));
+        cfg_set_int_in(L"keys", L"x", tx);
+        cfg_set_int_in(L"keys", L"y", y + h - th);
+        cfg_set_int_in(L"keys", L"opacity", cfg_get_int(L"opacity", 100));
     }
     wchar_t exe[MAX_PATH], cmd[MAX_PATH + 16];
     GetModuleFileNameW(NULL, exe, MAX_PATH);
-    wsprintfW(cmd, L"\"%s\" --teclas", exe);
+    wsprintfW(cmd, L"\"%s\" --keys", exe);
     STARTUPINFOW si = { sizeof si };
     PROCESS_INFORMATION pi;
     if (CreateProcessW(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
@@ -557,11 +557,11 @@ static void open_map(void) {
     }
 }
 
-static void close_map(void) { widget_post(L"teclas", MSG_CERRAR_MAPA, 0); }
+static void close_map(void) { widget_post(L"keys", MSG_CLOSE_MAP, 0); }
 
 static void message(int code, int value) {
     (void)value;
-    if (code == MSG_MAPA_CERRADO) { mapa = 0; cfg_set_int(L"mapa", 0); }
+    if (code == MSG_MAP_CLOSED) { map_on = 0; cfg_set_int(L"map", 0); }
 }
 
 /* al cerrar el cubo se cierra su mapa, pero la opcion queda guardada para la proxima vez */
@@ -577,46 +577,53 @@ static const wchar_t *const MENU[] = {
 };
 
 static int menu_checked(int i) {
-    if (i >= 3) return giro_ms == SPEEDS[i - 3];
-    return (i == 0 && use_ins) || (i == 1 && mapa);
+    if (i >= 3) return turn_ms == SPEEDS[i - 3];
+    return (i == 0 && use_ins) || (i == 1 && map_on);
 }
 
 static void on_menu(int i) {
-    if (i == 0) { use_ins = !use_ins; cfg_set_int(L"inspeccion", use_ins); }
+    if (i == 0) { use_ins = !use_ins; cfg_set_int(L"inspection", use_ins); }
     else if (i == 1) {
-        mapa = !mapa;
-        cfg_set_int(L"mapa", mapa);
-        if (mapa) open_map(); else close_map();
+        map_on = !map_on;
+        cfg_set_int(L"map", map_on);
+        if (map_on) open_map(); else close_map();
     } else if (i == 2) {
         ntimes = 0; best = 0; last_ms = -2; last_pen = 0;
         save_stats();
     } else if (i >= 3) {
-        giro_ms = SPEEDS[i - 3];
-        cfg_set_int(L"giro_ms", giro_ms);
+        turn_ms = SPEEDS[i - 3];
+        cfg_set_int(L"turn_ms", turn_ms);
     }
 }
 
 static void focus(int f) { focused = f; }
 static void init(void) {
+    /* TEMPORAL (quitar antes de publicar): claves y mapa del nombre provisional */
+    cfg_rename(L"inspeccion", L"inspection");
+    cfg_rename(L"giro_ms", L"turn_ms");
+    cfg_rename(L"mapa", L"map");
+    cfg_migrate_section(L"keys", L"cubo", L"teclas");
+
     reset_cube();
     sync_vis();
     load_stats();
-    giro_ms = cfg_get_int(L"giro_ms", 100);
+    turn_ms = cfg_get_int(L"turn_ms", 100);
     cam_t = cfg_get_int(L"cam_t", 0);
     cam_p = cfg_get_int(L"cam_p", 6);
     setup_camera();
-    mapa = cfg_get_int(L"mapa", 0);
-    if (mapa) open_map();
+    map_on = cfg_get_int(L"map", 0);
+    if (map_on) open_map();
 }
 static void hide(int h) { if (h && state != IDLE) abort_solve(); }
 
 int main(void) {
-    if (wcsstr(GetCommandLineW(), L"--teclas")) return teclas_main();
+    if (wcsstr(GetCommandLineW(), L"--keys")) return keys_main();
     WidgetDesc d = {
-        .name = L"cubo", .w = W, .h = H, .fps = 0,
+        .name = L"cube", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw, .on_key = key, .on_hide = hide, .on_focus = focus,
         .on_message = message, .on_close = closed,
         .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu,
+        .legacy_ini = L"cubo",
     };
     return widget_run(&d);
 }

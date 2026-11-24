@@ -1,5 +1,5 @@
 /*
- * punto - minijuego de reflejos.
+ * dot - minijuego de reflejos.
  * Aparece un punto que se encoge; hazle clic antes de que desaparezca.
  * Fallar el clic o dejar que se esfume cuesta una vida (3 vidas).
  * En reposo no anima nada (fps 0); solo corre a 30 fps mientras juegas.
@@ -102,9 +102,10 @@ static void hide(int hidden) { (void)hidden; /* el temporizador se pausa solo */
 
 int main(void) {
     WidgetDesc d = {
-        .name = L"punto", .w = W, .h = H, .fps = 0,
+        .name = L"dot", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw,
         .on_mouse = mouse, .on_hide = hide,
+        .legacy_ini = L"punto",
     };
     return widget_run(&d);
 }

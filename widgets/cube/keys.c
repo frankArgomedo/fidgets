@@ -1,11 +1,11 @@
 /*
- * teclas - mapa de teclas del cubo virtual. Es un "acompanante" de cubo: vive
- * dentro de cubo.exe (se abre con "cubo.exe --teclas") y lo abre y cierra el
+ * keys - mapa de teclas del cubo virtual. Es un "acompanante" de cubo: vive
+ * dentro de cube.exe (se abre con "cube.exe --keys") y lo abre y cierra el
  * cubo desde su menu. No es un programa aparte.
  *
  * Cada tecla muestra arriba su etiqueta real en la distribucion de teclado que
  * este usando Windows (en espanol se ve "Ñ", en ingles ";") y abajo el giro que
- * hace. Cuando "cubo" recibe una tecla le avisa a este widget y la tecla se
+ * hace. Cuando "cube" recibe una tecla le avisa a este widget y la tecla se
  * ilumina un instante. En reposo no dibuja nada (0% CPU); solo anima los
  * 250 ms del destello.
  *
@@ -27,8 +27,8 @@
 #define ROWH 27
 #define OX 8             /* 8 + 15 + 9*21 + 20 + 8 = 240 (>= MARGIN) */
 #define OY 7             /* 7 + 3*27 + 24 + 8 = 120 */
-#define W TECLAS_W
-#define H TECLAS_H
+#define W KEYS_W
+#define H KEYS_H
 
 /* filas del teclado: primer scan code de la fila y desplazamiento como en un teclado real */
 static const unsigned char ROW_SCAN[4] = { 0x02, 0x10, 0x1E, 0x2C };
@@ -69,12 +69,12 @@ static void light(int scan) {
 }
 
 static void message(int code, int value) {
-    if (code == MSG_TECLA_USADA) light(value);
-    else if (code == MSG_CERRAR_MAPA) widget_close();
+    if (code == MSG_KEY_USED) light(value);
+    else if (code == MSG_CLOSE_MAP) widget_close();
 }
 
 /* si el usuario lo cierra a mano, el cubo apaga la opcion "Mapa de teclas" */
-static void closed(int by_user) { if (by_user) widget_post(L"cubo", MSG_MAPA_CERRADO, 0); }
+static void closed(int by_user) { if (by_user) widget_post(L"cube", MSG_MAP_CLOSED, 0); }
 
 /* tambien se ilumina si se escribe con este widget seleccionado */
 static int key(int vk, int scan, int down) { (void)vk; if (down == 1) light(scan); return 0; }
@@ -119,11 +119,12 @@ static void draw(void) {
 
 static void init(void) { update_names(); }
 
-int teclas_main(void) {
+int keys_main(void) {
     WidgetDesc d = {
-        .name = L"teclas", .w = W, .h = H, .fps = 0,
+        .name = L"keys", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw, .on_key = key, .on_message = message,
         .on_close = closed,
+        .legacy_ini = L"cubo", .legacy_section = L"teclas",
     };
     return widget_run(&d);
 }

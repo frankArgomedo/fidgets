@@ -21,7 +21,7 @@
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
 
-#define CLASS_NAME L"bored_widget"
+#define CLASS_NAME L"fidgets_widget"
 #define HK_HIDEALL 1
 #define HK_QUITALL 2
 #define WM_SHOWME (WM_APP + 1)
@@ -78,31 +78,54 @@ void cfg_set_int_in(const wchar_t *section, const wchar_t *key, int value) {
     WritePrivateProfileStringW(section, key, buf, ini_path);
 }
 
-/* Ajustes en %APPDATA%\<CONFIG_DIR>\<nombre del exe>.ini, asi el programa puede
- * estar en cualquier carpeta (incluso una sin permiso de escritura). BORED_INI=ruta
- * lo reemplaza (pruebas). Si aun no existe y hay un bored.ini viejo junto al .exe,
- * se copia una vez (migracion desde la version que guardaba en bin\). */
-#ifndef CONFIG_DIR
-#define CONFIG_DIR L"bored"
-#endif
+/* TEMPORAL (quitar antes de publicar): renombra una clave de la seccion del widget
+ * si la nueva aun no existe. Devuelve 1 si la renombro. */
+int cfg_rename(const wchar_t *old_key, const wchar_t *new_key) {
+    wchar_t v[64];
+    if (GetPrivateProfileStringW(D->name, new_key, L"", v, 64, ini_path) > 0) return 0;
+    if (GetPrivateProfileStringW(D->name, old_key, L"", v, 64, ini_path) == 0) return 0;
+    WritePrivateProfileStringW(D->name, new_key, v, ini_path);
+    WritePrivateProfileStringW(D->name, old_key, NULL, ini_path);
+    return 1;
+}
+
+/* Ajustes en %APPDATA%\fidgets\<nombre del exe>.ini, asi el programa puede estar en
+ * cualquier carpeta (incluso una sin permiso de escritura). FIDGETS_INI=ruta lo
+ * reemplaza (pruebas). */
+#define CONFIG_DIR L"fidgets"
+
+/* TEMPORAL (quitar antes de publicar): migracion desde el nombre provisional "bored".
+ * Si la seccion del widget aun no existe, se copia la de
+ * %APPDATA%\bored\<legacy_ini>.ini (seccion legacy_section). */
+void cfg_migrate_section(const wchar_t *section, const wchar_t *legacy_ini, const wchar_t *legacy_section) {
+    static wchar_t buf[8192];
+    wchar_t appdata[MAX_PATH], old[MAX_PATH];
+    if (!legacy_ini || !GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH)) return;
+    if (GetPrivateProfileSectionW(section, buf, 8192, ini_path) > 0) return;
+    wsprintfW(old, L"%s\\bored\\%s.ini", appdata, legacy_ini);
+    DWORD n = GetPrivateProfileSectionW(legacy_section ? legacy_section : legacy_ini, buf, 8192, old);
+    if (n > 0 && n < 8190) WritePrivateProfileSectionW(section, buf, ini_path);
+}
+
 static void find_ini(void) {
-    if (GetEnvironmentVariableW(L"BORED_INI", ini_path, MAX_PATH) > 0) return;
-    wchar_t exe[MAX_PATH], old[MAX_PATH], appdata[MAX_PATH];
+    if (GetEnvironmentVariableW(L"FIDGETS_INI", ini_path, MAX_PATH) > 0) return;
+    wchar_t exe[MAX_PATH], appdata[MAX_PATH];
     GetModuleFileNameW(NULL, exe, MAX_PATH);
     wchar_t *base = exe, *dot = 0;
     for (wchar_t *p = exe; *p; p++) if (*p == L'\\' || *p == L'/') base = p + 1;
-    lstrcpyW(old, exe);
-    lstrcpyW(old + (base - exe), L"bored.ini");
     for (wchar_t *p = base; *p; p++) if (*p == L'.') dot = p;
+    if (!GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH)) {   /* sin APPDATA: junto al .exe */
+        if (dot) lstrcpyW(dot, L".ini");
+        lstrcpyW(ini_path, exe);
+        return;
+    }
     if (dot) *dot = 0;
-    if (!GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH)) { lstrcpyW(ini_path, old); return; }
     wsprintfW(ini_path, L"%s\\%s", appdata, CONFIG_DIR);
     CreateDirectoryW(ini_path, NULL);
     lstrcatW(ini_path, L"\\");
     lstrcatW(ini_path, base);
     lstrcatW(ini_path, L".ini");
-    if (GetFileAttributesW(ini_path) == INVALID_FILE_ATTRIBUTES && GetFileAttributesW(old) != INVALID_FILE_ATTRIBUTES)
-        CopyFileW(old, ini_path, TRUE);
+    cfg_migrate_section(D->name, D->legacy_ini, D->legacy_section);
 }
 
 /* ---------------------------------------------------------------- tema */
@@ -629,12 +652,12 @@ int widget_run(const WidgetDesc *d) {
     D = d;
     QueryPerformanceFrequency(&qpf);
 
-    /* Modo foto (para pruebas): BORED_SNAPSHOT=archivo dibuja una vez SIN crear
-     * ventana y guarda el buffer. BORED_KEYS="17,24,..." (scan codes en hex) se
+    /* Modo foto (para pruebas): FIDGETS_SNAPSHOT=archivo dibuja una vez SIN crear
+     * ventana y guarda el buffer. FIDGETS_KEYS="17,24,..." (scan codes en hex) se
      * envian antes a on_key. Formato: "BSNP", ancho, alto (int32) y pixeles BGRA
      * premultiplicados, de arriba a abajo. */
     wchar_t snap[MAX_PATH];
-    int snapshot = GetEnvironmentVariableW(L"BORED_SNAPSHOT", snap, MAX_PATH) > 0;
+    int snapshot = GetEnvironmentVariableW(L"FIDGETS_SNAPSHOT", snap, MAX_PATH) > 0;
 
     /* Una sola instancia por widget: si ya existe, se muestra y salimos. */
     HWND prev = snapshot ? NULL : FindWindowW(CLASS_NAME, d->name);
@@ -653,10 +676,10 @@ int widget_run(const WidgetDesc *d) {
     rng_state ^= (uint32_t)seed.QuadPart ^ (GetCurrentProcessId() << 16);
     if (!rng_state) rng_state = 1;
 
-    MSG_HIDEALL = RegisterWindowMessageW(L"bored.hideall");
-    MSG_QUITALL = RegisterWindowMessageW(L"bored.quitall");
-    MSG_REHOOK = RegisterWindowMessageW(L"bored.rehook");
-    MSG_USER = RegisterWindowMessageW(L"bored.user");
+    MSG_HIDEALL = RegisterWindowMessageW(L"fidgets.hideall");
+    MSG_QUITALL = RegisterWindowMessageW(L"fidgets.quitall");
+    MSG_REHOOK = RegisterWindowMessageW(L"fidgets.rehook");
+    MSG_USER = RegisterWindowMessageW(L"fidgets.user");
 
     topmost = cfg_get_int(L"topmost", 1);
     opacity = cfg_get_int(L"opacity", 100);
@@ -679,7 +702,7 @@ int widget_run(const WidgetDesc *d) {
         wchar_t keys[512];
         fps = d->fps;
         if (d->on_init) d->on_init();
-        if (d->on_key && GetEnvironmentVariableW(L"BORED_KEYS", keys, 512) > 0) {
+        if (d->on_key && GetEnvironmentVariableW(L"FIDGETS_KEYS", keys, 512) > 0) {
             int v = 0, have = 0;
             for (wchar_t *p = keys;; p++) {
                 int h = *p >= L'0' && *p <= L'9' ? *p - L'0' : (*p >= L'a' && *p <= L'f' ? *p - L'a' + 10 :
@@ -690,7 +713,7 @@ int widget_run(const WidgetDesc *d) {
             }
         }
         wchar_t text[1024];
-        if (d->on_char && GetEnvironmentVariableW(L"BORED_TEXT", text, 1024) > 0) {
+        if (d->on_char && GetEnvironmentVariableW(L"FIDGETS_TEXT", text, 1024) > 0) {
             if (d->on_focus) d->on_focus(1);
             for (wchar_t *p = text; *p; p++) {
                 int ch = *p;
@@ -701,10 +724,10 @@ int widget_run(const WidgetDesc *d) {
                 d->on_char(ch);
             }
         }
-        /* BORED_TICK_MS: tiempo simulado tras las teclas (por defecto 1000 ms), en pasos de 16 ms */
+        /* FIDGETS_TICK_MS: tiempo simulado tras las teclas (por defecto 1000 ms), en pasos de 16 ms */
         int tick_ms = 1000;
         wchar_t tk[16];
-        if (GetEnvironmentVariableW(L"BORED_TICK_MS", tk, 16) > 0) {
+        if (GetEnvironmentVariableW(L"FIDGETS_TICK_MS", tk, 16) > 0) {
             tick_ms = 0;
             for (wchar_t *p = tk; *p >= L'0' && *p <= L'9'; p++) tick_ms = tick_ms * 10 + (*p - L'0');
         }

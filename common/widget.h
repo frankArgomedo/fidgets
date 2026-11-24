@@ -1,5 +1,5 @@
 /*
- * widget.h - base comun para los widgets de "bored".
+ * widget.h - base comun para los widgets de "fidgets".
  *
  * Cada widget es un .exe diminuto: ventana sin bordes, con transparencia por
  * pixel, que se puede arrastrar, fijar encima de todo y ocultar/cerrar rapido.
@@ -25,12 +25,12 @@
  *   Ctrl+Alt+B                    -> ocultar / mostrar TODOS los widgets
  *   Ctrl+Alt+Q                    -> cerrar TODOS los widgets
  *
- * Pruebas sin ventana: BORED_SNAPSHOT=archivo (dibuja una vez y sale), con
- * BORED_KEYS (scan codes hex), BORED_TEXT (texto para on_char; "\b" = retroceso,
- * "\t" = Tab, "\n" = Enter) y BORED_TICK_MS (tiempo simulado).
+ * Pruebas sin ventana: FIDGETS_SNAPSHOT=archivo (dibuja una vez y sale), con
+ * FIDGETS_KEYS (scan codes hex), FIDGETS_TEXT (texto para on_char; "\b" = retroceso,
+ * "\t" = Tab, "\n" = Enter) y FIDGETS_TICK_MS (tiempo simulado).
  */
-#ifndef BORED_WIDGET_H
-#define BORED_WIDGET_H
+#ifndef FIDGETS_WIDGET_H
+#define FIDGETS_WIDGET_H
 
 #include <stdint.h>
 
@@ -86,6 +86,12 @@ typedef struct WidgetDesc {
     const wchar_t *const *menu;
     int  (*menu_checked)(int i);   /* 1 = mostrar marca; puede ser NULL */
     void (*on_menu)(int i);
+
+    /* TEMPORAL (quitar antes de publicar): de donde migrar los ajustes del nombre
+     * provisional "bored": %APPDATA%\bored\<legacy_ini>.ini, seccion legacy_section
+     * (NULL = la de nombre legacy_ini, el nombre viejo del widget). */
+    const wchar_t *legacy_ini;
+    const wchar_t *legacy_section;
 } WidgetDesc;
 
 int  widget_run(const WidgetDesc *d);
@@ -98,12 +104,18 @@ int  widget_post(const wchar_t *name, int code, int value);
 /* posicion y tamano de la ventana en pixeles de pantalla; 0 si aun no hay ventana */
 int  widget_rect(int *x, int *y, int *w, int *h);
 
-/* Configuracion persistente (%APPDATA%\bored\<exe>.ini, seccion = name). */
+/* Configuracion persistente (%APPDATA%\fidgets\<exe>.ini, seccion = name). */
 int  cfg_get_int(const wchar_t *key, int def);
 void cfg_set_int(const wchar_t *key, int value);
 /* lo mismo para la seccion de otro widget del mismo programa */
 int  cfg_get_int_in(const wchar_t *section, const wchar_t *key, int def);
 void cfg_set_int_in(const wchar_t *section, const wchar_t *key, int value);
+/* TEMPORAL (quitar antes de publicar): renombra una clave de la seccion del widget si
+ * la nueva aun no existe; 1 si la renombro. */
+int  cfg_rename(const wchar_t *old_key, const wchar_t *new_key);
+/* TEMPORAL: copia una seccion de %APPDATA%\bored\<legacy_ini>.ini si aun no existe
+ * (la base ya lo hace con la del widget; sirve para la de un acompanante). */
+void cfg_migrate_section(const wchar_t *section, const wchar_t *legacy_ini, const wchar_t *legacy_section);
 
 /* Dibujo sobre el buffer de la ventana. */
 void gfx_clear(Color c);

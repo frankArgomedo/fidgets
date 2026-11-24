@@ -1,6 +1,6 @@
 # Compila cada widget de widgets/<nombre>/ a bin/<nombre>.exe
 # Uso:  .\build.ps1            (todos)
-#       .\build.ps1 punto      (solo uno)
+#       .\build.ps1 dot        (solo uno)
 param([string]$Only = "")
 
 $ErrorActionPreference = "Stop"

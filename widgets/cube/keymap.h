@@ -1,19 +1,19 @@
 /*
  * keymap.h - mapa de teclas del cubo virtual (el de csTimer), compartido por
- * los widgets "cubo" y "teclas". Las teclas van por posicion fisica (scan code
+ * los widgets "cube" y "keys". Las teclas van por posicion fisica (scan code
  * set 1), asi que funcionan igual con cualquier distribucion de teclado.
  */
 #ifndef BORED_KEYMAP_H
 #define BORED_KEYMAP_H
 
-/* mensajes entre "cubo" y su mapa "teclas" (widget_post / on_message) */
-#define MSG_TECLA_USADA 1   /* cubo -> teclas: value = scan code de la tecla usada */
-#define MSG_CERRAR_MAPA 2   /* cubo -> teclas: cerrarse */
-#define MSG_MAPA_CERRADO 3  /* teclas -> cubo: el usuario cerro el mapa a mano */
+/* mensajes entre "cube" y su mapa "keys" (widget_post / on_message) */
+#define MSG_KEY_USED 1   /* cubo -> teclas: value = scan code de la tecla usada */
+#define MSG_CLOSE_MAP 2   /* cubo -> teclas: cerrarse */
+#define MSG_MAP_CLOSED 3  /* teclas -> cubo: el usuario cerro el mapa a mano */
 
 /* tamano logico del mapa (lo usa el cubo para ponerlo a su lado) */
-#define TECLAS_W 240   /* cuadricula de 40 px: 6x3 modulos */
-#define TECLAS_H 120
+#define KEYS_W 240   /* cuadricula de 40 px: 6x3 modulos */
+#define KEYS_H 120
 
 /* Mapa de teclas de csTimer, por codigo fisico (scan code set 1). */
 typedef struct { unsigned char scan; char label[3]; signed char ax, lo, hi, q, rot; } Key;

@@ -1,5 +1,5 @@
 /*
- * teclear - test de mecanografia: escribir palabras al azar contra el reloj o por
+ * typing - test de mecanografia: escribir palabras al azar contra el reloj o por
  * cantidad, y ver WPM y precision. Mecanica tomada de monkeytype; aspecto propio.
  *
  *   Clic en el widget  -> darle el teclado; el test arranca con la primera letra
@@ -52,10 +52,10 @@
  * Los .txt (UTF-8, una por linea, orden de frecuencia) van dentro del .exe con
  * #embed. La lista "200" son las primeras 200 lineas de la de 1000. */
 static const char ES_TXT[] = {
-#embed "palabras/es_1000.txt"
+#embed "words/es_1000.txt"
     , 0 };
 static const char EN_TXT[] = {
-#embed "palabras/en_1000.txt"
+#embed "words/en_1000.txt"
     , 0 };
 
 #define LIST_MAX 1000
@@ -496,30 +496,53 @@ static int menu_checked(int i) {
     return 0;
 }
 
+/* Se guarda el valor real (segundos, palabras, tamano de la lista), no la posicion
+ * en el menu. */
 static void save_cfg(void) {
-    cfg_set_int(L"modo", mode);
-    cfg_set_int(L"tiempo", time_i);
-    cfg_set_int(L"palabras", count_i);
-    cfg_set_int(L"idioma", lang);
-    cfg_set_int(L"lista", big);
-    cfg_set_int(L"puntuacion", punct);
-    cfg_set_int(L"numeros", nums);
-    cfg_set_int(L"sintildes", lazy);
-    cfg_set_int(L"dificultad", diff);
+    cfg_set_int(L"mode", mode);
+    cfg_set_int(L"time", TIMES[time_i]);
+    cfg_set_int(L"words", COUNTS[count_i]);
+    cfg_set_int(L"lang", lang);
+    cfg_set_int(L"list", big ? 1000 : 200);
+    cfg_set_int(L"punctuation", punct);
+    cfg_set_int(L"numbers", nums);
+    cfg_set_int(L"no_accents", lazy);
+    cfg_set_int(L"difficulty", diff);
 }
 
 static int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/* posicion de v en a[0..n-1]; def si no esta */
+static int index_of(const int *a, int n, int v, int def) {
+    for (int i = 0; i < n; i++) if (a[i] == v) return i;
+    return def;
+}
+
+/* TEMPORAL (quitar antes de publicar): claves del nombre provisional "teclear".
+ * tiempo, palabras y lista guardaban la posicion en el menu; ahora el valor real. */
+static void migrate_cfg(void) {
+    if (cfg_rename(L"tiempo", L"time")) cfg_set_int(L"time", TIMES[clampi(cfg_get_int(L"time", 1), 0, 3)]);
+    if (cfg_rename(L"palabras", L"words")) cfg_set_int(L"words", COUNTS[clampi(cfg_get_int(L"words", 1), 0, 3)]);
+    if (cfg_rename(L"lista", L"list")) cfg_set_int(L"list", cfg_get_int(L"list", 0) ? 1000 : 200);
+    cfg_rename(L"modo", L"mode");
+    cfg_rename(L"idioma", L"lang");
+    cfg_rename(L"puntuacion", L"punctuation");
+    cfg_rename(L"numeros", L"numbers");
+    cfg_rename(L"sintildes", L"no_accents");
+    cfg_rename(L"dificultad", L"difficulty");
+}
+
 static void load_cfg(void) {
-    mode = clampi(cfg_get_int(L"modo", MODE_TIME), 0, 1);
-    time_i = clampi(cfg_get_int(L"tiempo", 1), 0, 3);
-    count_i = clampi(cfg_get_int(L"palabras", 1), 0, 3);
-    lang = clampi(cfg_get_int(L"idioma", 0), 0, 1);
-    big = clampi(cfg_get_int(L"lista", 0), 0, 1);
-    punct = cfg_get_int(L"puntuacion", 0) != 0;
-    nums = cfg_get_int(L"numeros", 0) != 0;
-    lazy = cfg_get_int(L"sintildes", 0) != 0;
-    diff = clampi(cfg_get_int(L"dificultad", 0), 0, 2);
+    migrate_cfg();
+    mode = clampi(cfg_get_int(L"mode", MODE_TIME), 0, 1);
+    time_i = index_of(TIMES, 4, cfg_get_int(L"time", 30), 1);
+    count_i = index_of(COUNTS, 4, cfg_get_int(L"words", 25), 1);
+    lang = clampi(cfg_get_int(L"lang", 0), 0, 1);
+    big = cfg_get_int(L"list", 200) == 1000;
+    punct = cfg_get_int(L"punctuation", 0) != 0;
+    nums = cfg_get_int(L"numbers", 0) != 0;
+    lazy = cfg_get_int(L"no_accents", 0) != 0;
+    diff = clampi(cfg_get_int(L"difficulty", 0), 0, 2);
 }
 
 static void on_menu(int i) {
@@ -549,10 +572,11 @@ static void init(void) {
 
 int main(void) {
     WidgetDesc d = {
-        .name = L"teclear", .w = W, .h = H, .fps = 0,
+        .name = L"typing", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw, .on_char = on_char,
         .on_hide = hide, .on_focus = focus,
         .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu,
+        .legacy_ini = L"teclear",
     };
     return widget_run(&d);
 }

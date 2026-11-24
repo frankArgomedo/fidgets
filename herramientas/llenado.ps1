@@ -4,7 +4,7 @@
 # (P.ej. el cubo se dimensiona por el angulo de camara mas ancho, no por cada uno.)
 #
 # Uso:  .\herramientas\llenado.ps1            (todos los casos)
-#       .\herramientas\llenado.ps1 cubo       (solo los de un widget)
+#       .\herramientas\llenado.ps1 cube       (solo los de un widget)
 # Usa los .exe de bin\ (compilar antes). Sale con codigo 1 si algun caso falla.
 param([string]$Only = "", [switch]$Detalle)
 
@@ -13,29 +13,29 @@ $LLENO = 10      # un eje "lleno": sus dos margenes <= 10 px
 $UMBRAL = 24     # alfa a partir del cual un pixel cuenta como contenido visible
 
 $root = Split-Path $PSScriptRoot -Parent
-$tmp = Join-Path $env:TEMP "bored_llenado"
+$tmp = Join-Path $env:TEMP "fidgets_llenado"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
 # Casos: widget, argumentos, ini, teclas (scan hex), texto (on_char), ms simulados, nombre,
 #        estado transitorio (puede usar el margen), grupo para el llenado
 $casos = @()
 foreach ($t in -6, -3, 0, 3, 6) { foreach ($p in -6, 0, 6) {
-  $casos += , @("cubo", "", "[cubo]`r`ncam_t=$t`r`ncam_p=$p`r`ngiro_ms=0", "", "", 0, "cubo camara t=$t p=$p", $false, "cubo (todas las camaras)")
+  $casos += , @("cube", "", "[cube]`r`ncam_t=$t`r`ncam_p=$p`r`nturn_ms=0", "", "", 0, "cube camara t=$t p=$p", $false, "cube (todas las camaras)")
 } }
 # giros a mitad de animacion (100 ms por giro; 50 ms = 45 grados), camara de frente y girada
 foreach ($cam in @("cam_t=0`r`ncam_p=6", "cam_t=6`r`ncam_p=6")) {
   foreach ($k in @(@("24", "U"), @("17", "R"), @("23", "F"), @("27", "y"))) {
-    $casos += , @("cubo", "", "[cubo]`r`n$cam`r`ngiro_ms=100", $k[0], "", 50, "cubo giro $($k[1]) a 45 ($($cam -replace "`r`n", ' '))", $true, "")
+    $casos += , @("cube", "", "[cube]`r`n$cam`r`nturn_ms=100", $k[0], "", 50, "cube giro $($k[1]) a 45 ($($cam -replace "`r`n", ' '))", $true, "")
   }
 }
-$casos += , @("cubo", "--teclas", "", "", "", 0, "mapa reposo", $false, "mapa")
-$casos += , @("cubo", "--teclas", "", "17", "", 60, "mapa tecla iluminada", $false, "mapa")
-$casos += , @("teclear", "", "", "", "", 0, "teclear reposo", $false, "teclear texto")
-$casos += , @("teclear", "", "[teclear]`r`npuntuacion=1`r`nnumeros=1`r`nidioma=1`r`nlista=1", "", "", 0, "teclear puntuacion", $false, "teclear texto")
-$casos += , @("teclear", "", "", "", "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", 0, "teclear letras de mas", $false, "teclear texto")
-$casos += , @("teclear", "", "[teclear]`r`nmodo=1`r`npalabras=0", "", "q w e r t y u i o p ", 0, "teclear resultado", $false, "teclear resultado")
-$casos += , @("teclear", "", "[teclear]`r`ndificultad=2", "", "##", 0, "teclear fallo", $false, "teclear fallo")
-$casos += , @("punto", "", "", "", "", 0, "punto reposo", $false, "")   # area de juego: los puntos ocupan toda la celda al jugar (no se puede simular el clic)
+$casos += , @("cube", "--keys", "", "", "", 0, "mapa reposo", $false, "mapa")
+$casos += , @("cube", "--keys", "", "17", "", 60, "mapa tecla iluminada", $false, "mapa")
+$casos += , @("typing", "", "", "", "", 0, "typing reposo", $false, "typing texto")
+$casos += , @("typing", "", "[typing]`r`npunctuation=1`r`nnumbers=1`r`nlang=1`r`nlist=1000", "", "", 0, "typing puntuacion", $false, "typing texto")
+$casos += , @("typing", "", "", "", "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", 0, "typing letras de mas", $false, "typing texto")
+$casos += , @("typing", "", "[typing]`r`nmode=1`r`nwords=10", "", "q w e r t y u i o p ", 0, "typing resultado", $false, "typing resultado")
+$casos += , @("typing", "", "[typing]`r`ndifficulty=2", "", "##", 0, "typing fallo", $false, "typing fallo")
+$casos += , @("dot", "", "", "", "", 0, "dot reposo", $false, "")   # area de juego: los puntos ocupan toda la celda al jugar (no se puede simular el clic)
 
 $fallos = 0
 $grupos = [ordered]@{}
@@ -43,9 +43,9 @@ foreach ($c in $casos) {
   if ($Only -and $c[0] -ne $Only) { continue }
   $exe = Join-Path $root "bin\$($c[0]).exe"
   "$($c[2])" | Set-Content "$tmp\p.ini" -Encoding Unicode
-  $env:BORED_INI = "$tmp\p.ini"; $env:BORED_SNAPSHOT = "$tmp\f.bsnp"; $env:BORED_TICK_MS = "$($c[5])"
-  if ($c[3]) { $env:BORED_KEYS = $c[3] } else { Remove-Item Env:BORED_KEYS -ErrorAction SilentlyContinue }
-  if ($c[4]) { $env:BORED_TEXT = $c[4] } else { Remove-Item Env:BORED_TEXT -ErrorAction SilentlyContinue }
+  $env:FIDGETS_INI = "$tmp\p.ini"; $env:FIDGETS_SNAPSHOT = "$tmp\f.bsnp"; $env:FIDGETS_TICK_MS = "$($c[5])"
+  if ($c[3]) { $env:FIDGETS_KEYS = $c[3] } else { Remove-Item Env:FIDGETS_KEYS -ErrorAction SilentlyContinue }
+  if ($c[4]) { $env:FIDGETS_TEXT = $c[4] } else { Remove-Item Env:FIDGETS_TEXT -ErrorAction SilentlyContinue }
   if ($c[1]) { Start-Process $exe -ArgumentList $c[1] -Wait } else { Start-Process $exe -Wait }
   $d = [IO.File]::ReadAllBytes("$tmp\f.bsnp"); $w = [BitConverter]::ToInt32($d, 4); $h = [BitConverter]::ToInt32($d, 8)
   $x0 = $w; $y0 = $h; $x1 = -1; $y1 = -1
@@ -77,6 +77,6 @@ foreach ($k in $grupos.Keys) {
   "{0,-40} izq {1,3} arr {2,3} der {3,3} aba {4,3}  {5}" -f $k, $l, $t, $r, $b, $nota
   if (-not $ejeLleno -or $escalon) { $fallos++ }
 }
-Remove-Item Env:BORED_SNAPSHOT, Env:BORED_TICK_MS, Env:BORED_INI, Env:BORED_KEYS, Env:BORED_TEXT -ErrorAction SilentlyContinue
+Remove-Item Env:FIDGETS_SNAPSHOT, Env:FIDGETS_TICK_MS, Env:FIDGETS_INI, Env:FIDGETS_KEYS, Env:FIDGETS_TEXT -ErrorAction SilentlyContinue
 "{0} fallos" -f $fallos
 exit [int]($fallos -gt 0)
