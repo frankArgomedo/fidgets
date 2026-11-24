@@ -8,6 +8,14 @@
  * hace. Cuando "cubo" recibe una tecla le avisa a este widget y la tecla se
  * ilumina un instante. En reposo no dibuja nada (0% CPU); solo anima los
  * 250 ms del destello.
+ *
+ * Ficha de tamano (ver "Tamano y espacio" en CLAUDE.md):
+ *   Requisitos: las 40 teclas en su posicion real; en cada una, su letra y su giro.
+ *   Estados persistentes: reposo y con teclas iluminadas (el destello no cambia tamanos).
+ *   Papeles: teclas = grafico; letra de la tecla (8 px) y giro (10 px) = EXCEPCION
+ *     anotada en CLAUDE.md: con texto de 11 px las teclas no entran en 240 px.
+ *   Celda: 240x120. Minimo: teclas de 20x24 (lo justo para el giro a 10 px) ->
+ *     8+15+9*21+20+8 = 240 de ancho y 7+3*27+24+8 = 120 de alto; ninguna celda menor.
  */
 #include "widget.h"
 #include "keymap.h"

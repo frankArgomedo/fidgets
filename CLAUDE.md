@@ -28,31 +28,7 @@ menor consumo posible. Solo para Windows.
 
 ## Reglas para widgets nuevos
 
-- Tamaño: cuadrícula de 40 px. Ancho y alto SIEMPRE múltiplos de 40 (160, 240, 320…;
-  80, 120, 160, 200…), con la forma que pida el contenido y lo más chico posible
-  (máximo ~320×320). Hoy: punto 160×120, cubo 160×200, mapa 240×120, teclear 320×120.
-  La base pega los widgets con imán, SIN separación, a los bordes de la pantalla y
-  entre sí (atrae a menos de 12 px; Shift al arrastrar lo desactiva); con medidas
-  múltiplos de 40 los bordes coinciden.
-- Margen OBLIGATORIO: el contenido visible queda al menos `MARGIN` (6 px) dentro del
-  borde del widget, en todos sus estados; ese margen es lo que separa a dos widgets
-  pegados. Los estados de menos de ~100 ms (p.ej. un giro del cubo) pueden usar el
-  margen, pero no salirse de la ventana.
-- Llenar la celda: el margen es el mínimo, no un relleno. El contenido se dibuja lo más
-  grande posible y, juntando todos sus estados, llega a ~6–10 px del borde en al menos
-  un eje (el otro queda centrado). Si cambia de forma (cámara del cubo), se dimensiona
-  por el caso más grande.
-- Cómo elegir el tamaño al crear un widget: 1) contenido mínimo legible; 2) la celda más
-  chica de la cuadrícula donde entra con su margen; 3) agrandar el contenido hasta
-  llenarla. Es demasiado chico si, llenando la celda, queda bajo algún mínimo; es
-  demasiado grande si cabría en una celda menor respetando los mínimos.
-- Mínimos de legibilidad (pensados para opacidad baja): texto principal 14 px, texto
-  secundario 11 px, zona para clicar 16×16 px, detalles de color ~10 px por lado.
-  Excepciones conocidas: etiquetas del mapa de teclas (8 y 10 px) y el punto que se
-  achica en `punto` (es la mecánica del juego).
-- Comprobar margen y llenado con `.\herramientas\llenado.ps1 [widget] [-Detalle]` (fotos
-  sin ventanas); al agregar un widget o un estado, agregar sus casos al script.
-  Coordenadas en píxeles lógicos (la base escala según el DPI).
+- Tamaño, margen y llenado: ver «Tamaño y espacio (obligatorio)».
 - Sin panel de fondo por defecto (preferencia del usuario): `gfx_clear_hit()` deja el
   fondo invisible pero agarrable con cualquier opacidad. Los píxeles con alfa final 0
   dejan pasar el clic a lo que está detrás. Texto con `| TEXT_SHADOW` para que se
@@ -81,3 +57,60 @@ menor consumo posible. Solo para Windows.
   nada si el otro no está abierto) y `on_message` en el receptor. Ej.: `cubo` avisa a
   `teclas` cada tecla usada. El mapa de teclas compartido está en `widgets/cubo/keymap.h`.
 - Referencia en reposo (`punto`): CPU 0 %, ~1,3 MB de memoria privada, .exe de ~70 KB.
+
+## Tamaño y espacio (obligatorio)
+
+Coordenadas en píxeles lógicos (la base escala según el DPI).
+
+**Conceptos**
+- Celda: el tamaño de la ventana. Ancho y alto SIEMPRE múltiplos de 40, de 80 a 320.
+- Margen: `MARGIN` (6 px) mínimo entre el borde y el contenido visible.
+- Estados: cada pantalla distinta del widget. Persistentes (se quedan) respetan el
+  margen; transitorios (< ~100 ms, p.ej. un giro del cubo) pueden usar el margen pero
+  no salirse de la ventana.
+- La base pega los widgets con imán, SIN separación, a los bordes de la pantalla y entre
+  sí (atrae a menos de 12 px; Shift al arrastrar lo desactiva). El margen es lo que
+  separa a dos widgets pegados.
+
+**Papel de cada elemento** (mínimo y tope, pensados para opacidad baja)
+
+| Papel | Ejemplos | Mínimo | Tope |
+|---|---|---|---|
+| Texto secundario | encabezados, avisos, unidades | 11 px | 13 px |
+| Texto principal | texto a leer o escribir, marcador, datos | 14 px | 16 px |
+| Dato destacado | tiempo del cubo, WPM del resultado | 24 px | sin tope |
+| Gráfico | cubo, teclas, área de juego | detalles ~10 px | sin tope |
+| Zona para clicar | botones, el punto | 16×16 px | — |
+
+Interlineado del texto de varias líneas: entre 1,5× (mínimo de WCAG) y 1,7× el tamaño
+de la letra.
+
+**Ficha** (obligatoria, en el comentario inicial de cada widget): requisitos funcionales
+(qué debe mostrar para usarse bien, p.ej. «3 líneas de al menos 30 caracteres»), estados
+persistentes y transitorios, papel de cada elemento, y celda elegida con su porqué.
+
+**Elegir la celda**
+1. Contenido mínimo = requisitos funcionales con cada elemento en el mínimo de su papel.
+2. De las celdas donde ese contenido cabe con su margen, la de MENOR ÁREA.
+3. Empate: la de forma más parecida al contenido. Nunca más de 320×320 (si no cabe, se
+   recortan los requisitos).
+
+**Llenar la celda**
+1. Agrandar los elementos dentro de su rango (primero gráficos y datos destacados) hasta
+   que, juntando todos los estados persistentes, el contenido llegue a 6–10 px del borde
+   en al menos un eje. Si cambia de forma (cámara del cubo), manda el caso más grande.
+2. Lo que sobre en el otro eje: centrar; y/o abrir el interlineado hasta 1,7×.
+3. Si con todo en su tope sobran 40 px o más en un eje (sumando ambos lados, sin contar
+   los márgenes), la celda es demasiado grande: volver a «Elegir la celda».
+
+**Excepciones** (cualquier otra desviación es un error)
+- Mapa de teclas: etiquetas de 8 y 10 px; las 40 teclas deben entrar en 240 px.
+- `punto`: el punto se achica hasta 8 px de diámetro; es la mecánica del juego.
+
+**Verificación**
+- `.\herramientas\llenado.ps1 [widget] [-Detalle]` (fotos sin ventanas): margen en cada
+  estado, llenado por grupo de estados y sobrante de 40 px. Al agregar un widget o un
+  estado, agregar sus casos al script.
+- Tamaños de letra y requisitos funcionales: revisar a mano contra la ficha.
+
+**Hoy:** punto 160×120, cubo 160×200, mapa 240×120, teclear 280×120.

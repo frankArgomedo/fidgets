@@ -70,8 +70,12 @@ foreach ($k in $grupos.Keys) {
   $g = $grupos[$k]
   $l = $g[2]; $t = $g[3]; $r = $g[0] - 1 - $g[4]; $b = $g[1] - 1 - $g[5]
   $ejeLleno = ($l -le $LLENO -and $r -le $LLENO) -or ($t -le $LLENO -and $b -le $LLENO)
-  "{0,-40} izq {1,3} arr {2,3} der {3,3} aba {4,3}  {5}" -f $k, $l, $t, $r, $b, $(if ($ejeLleno) { "lleno" } else { "SOBRA ESPACIO" })
-  if (-not $ejeLleno) { $fallos++ }
+  # sobrante por eje (sin contar los margenes): 40 px o mas = cabria en una celda menor
+  $sx = $l + $r - 2 * $MARGIN; $sy = $t + $b - 2 * $MARGIN
+  $escalon = $sx -ge 40 -or $sy -ge 40
+  $nota = if (-not $ejeLleno) { "SOBRA ESPACIO (ningun eje lleno)" } elseif ($escalon) { "SOBRA UN ESCALON (sobrante $sx x $sy)" } else { "lleno (sobrante $sx x $sy)" }
+  "{0,-40} izq {1,3} arr {2,3} der {3,3} aba {4,3}  {5}" -f $k, $l, $t, $r, $b, $nota
+  if (-not $ejeLleno -or $escalon) { $fallos++ }
 }
 Remove-Item Env:BORED_SNAPSHOT, Env:BORED_TICK_MS, Env:BORED_INI, Env:BORED_KEYS, Env:BORED_TEXT -ErrorAction SilentlyContinue
 "{0} fallos" -f $fallos

@@ -3,6 +3,16 @@
  * Aparece un punto que se encoge; hazle clic antes de que desaparezca.
  * Fallar el clic o dejar que se esfume cuesta una vida (3 vidas).
  * En reposo no anima nada (fps 0); solo corre a 30 fps mientras juegas.
+ *
+ * Ficha de tamano (ver "Tamano y espacio" en CLAUDE.md):
+ *   Requisitos: el punto (hasta 26 px) puede aparecer en al menos 5 posiciones
+ *     distintas a lo ancho y 3 a lo alto, para que haya que mover el mouse; marcador.
+ *   Estados persistentes: reposo (boton) y jugando; transitorio: destello de fallo.
+ *   Papeles: marcador = principal (14 px); "Mejor" = secundario (12 px); boton y
+ *     area de juego = grafico/zona para clicar; el punto que se achica hasta 8 px es
+ *     EXCEPCION (mecanica del juego).
+ *   Celda: 160x120. Minimo: 5x26 + margenes = 142 de ancho -> 160; marcador 18 + 3x26
+ *     + margenes = 108 de alto -> 120. El area de juego ocupa toda el area util.
  */
 #include "widget.h"
 #include <windows.h>

@@ -18,7 +18,16 @@
 #include <windows.h>
 #include <string.h>
 
-#define W 160   /* medido: el cubo ocupa ~139 px de ancho con cualquier camara */
+/* Ficha de tamano (ver "Tamano y espacio" en CLAUDE.md):
+ *   Requisitos: tiempo legible y el cubo al menos del tamano validado (escala 225:
+ *     pegatinas frontales de ~27 px, caras laterales distinguibles con opacidad baja).
+ *   Estados persistentes: reposo e inspeccion/tiempo con cualquier camara (13 x 13
+ *     angulos); transitorios: los giros (100 ms).
+ *   Papeles: tiempo = destacado (28 px); cubo = grafico.
+ *   Celda: 160x200. Minimo: cubo de 126x134 en el peor angulo + tiempo -> no entra en
+ *     120 de ancho ni en 160 de alto. El cubo se agranda (escala 261) hasta que en el
+ *     angulo mas ancho llega a 7 px del borde. */
+#define W 160
 #define H 200   /* cuadricula de 40 px: 4x5 modulos */
 #include <math.h>
 #define CX 80.0f

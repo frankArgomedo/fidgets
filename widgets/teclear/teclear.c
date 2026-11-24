@@ -14,6 +14,20 @@
  *   WPM   = caracteres de palabras bien escritas (con su espacio) / 5, por minuto
  *   bruto = todo lo tecleado (bien, mal y de mas) / 5, por minuto
  *   precision = teclas correctas / teclas pulsadas (un error cuenta aunque se borre)
+ *
+ * Ficha de tamano (ver "Tamano y espacio" en CLAUDE.md):
+ *   Requisitos: 3 lineas de texto de al menos 30 caracteres (se lee la siguiente
+ *     linea mientras se escribe; con menos de ~30 las palabras saltan de linea seguido).
+ *   Estados persistentes: reposo, escribiendo (incl. letras de mas), resultado, fallo.
+ *     Transitorio: el cursor deslizandose.
+ *   Papeles: texto del test, cuenta regresiva y datos del resultado = principal
+ *     (15/14/15 px); encabezado, avisos y "wpm" = secundario (12-13 px); WPM y "fallo"
+ *     = destacado (56 / 44 px).
+ *   Celda: 280x120. Minimo: 3 lineas a 14 px con interlineado 1,5x + encabezado no
+ *     entran en 80 de alto; 30 caracteres de Consolas a 14-15 px (8 px c/u) + margenes
+ *     no entran en 240 de ancho. De lo que cabe, 280x120 es la de menor area. La letra
+ *     no pasa de 15 px porque a 16 px (9 px por caracter) quedarian 29 caracteres;
+ *     el alto que sobra (< 40 px) se reparte con interlineado 1,67x y centrando.
  */
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -23,12 +37,12 @@
 
 #pragma clang diagnostic ignored "-Wc23-extensions"
 
-#define W 320          /* cuadricula de 40 px: 8x3 modulos */
+#define W 280          /* cuadricula de 40 px: 7x3 modulos (ver ficha) */
 #define H 120
 #define PAD 8
-#define FONT 18          /* texto del test, monoespaciado */
-#define TOP 27           /* y de la primera linea */
-#define LH 31            /* alto de linea */
+#define FONT 15          /* texto del test, monoespaciado (principal, tope 16) */
+#define TOP 33           /* y de la primera linea: bloque centrado bajo el encabezado */
+#define LH 25            /* alto de linea: 1,67x la letra (rango 1,5x-1,7x) */
 #define LINES 3
 #ifndef ANIM_FPS
 #define ANIM_FPS 45      /* mientras el cursor se desliza */
@@ -408,26 +422,26 @@ static void draw_words(void) {
 static void draw_result(void) {
     wchar_t b[64];
     if (state == FAILED) {
-        gfx_text(PAD, TOP, L"falló", theme->error, 48, ALIGN_LEFT | TEXT_SHADOW);
-        gfx_text(PAD, TOP + 64, fail_reason == 1 ? L"dejaste una palabra con error" : L"tecla incorrecta",
+        gfx_text(PAD, TOP, L"falló", theme->error, 44, ALIGN_LEFT | TEXT_SHADOW);
+        gfx_text(PAD, TOP + 56, fail_reason == 1 ? L"dejaste una palabra con error" : L"tecla incorrecta",
                  theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
         return;
     }
     fmt2(b, res_wpm);
-    gfx_text(PAD, TOP - 2, b, theme->accent, 64, ALIGN_LEFT | TEXT_SHADOW);
-    int x = PAD + gfx_text_width(b, -1, 64, 0) + 4;
-    gfx_text(x, TOP + 54, L"wpm", theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
-    int cx = 160;
+    gfx_text(PAD, TOP - 4, b, theme->accent, 56, ALIGN_LEFT | TEXT_SHADOW);
+    int x = PAD + gfx_text_width(b, -1, 56, 0) + 4;
+    gfx_text(x, TOP + 43, L"wpm", theme->sub, 13, ALIGN_LEFT | TEXT_SHADOW);
+    int cx = 140;              /* deja lugar a un WPM de 3 cifras */
     wsprintfW(b, L"precisión %d%%", (res_acc + 50) / 100);
-    gfx_text(cx, TOP + 10, b, theme->text, 15, ALIGN_LEFT | TEXT_SHADOW);
+    gfx_text(cx, TOP - 2, b, theme->text, 15, ALIGN_LEFT | TEXT_SHADOW);
     wsprintfW(b, L"bruto %d", (res_raw + 50) / 100);
-    gfx_text(cx, TOP + 38, b, theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
+    gfx_text(cx, TOP + 24, b, theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
     Color c = theme->sub;
-    if (res_low_acc) { lstrcpyW(b, L"no cuenta (mín. 75%)"); c = theme->error; }
+    if (res_low_acc) { lstrcpyW(b, L"no cuenta: < 75%"); c = theme->error; }
     else if (res_new_pb) { lstrcpyW(b, L"¡nuevo récord!"); c = theme->accent; }
     else if (res_pb > 0) wsprintfW(b, L"récord %d", (res_pb + 50) / 100);
     else b[0] = 0;
-    if (b[0]) gfx_text(cx, TOP + 66, b, c, 14, ALIGN_LEFT | TEXT_SHADOW);
+    if (b[0]) gfx_text(cx, TOP + 50, b, c, 15, ALIGN_LEFT | TEXT_SHADOW);
 }
 
 static void draw(void) {
