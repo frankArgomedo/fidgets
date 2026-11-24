@@ -1,5 +1,6 @@
-# salida de build.ps1 (los .exe se publican como releases, no en el repo)
+# salida de build.ps1 y release.ps1 (los .exe se publican como releases, no en el repo)
 bin/
+dist/
 *.exe
 *.obj
 *.o

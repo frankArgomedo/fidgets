@@ -371,13 +371,23 @@ Nunca abrir ventanas de prueba sobre la pantalla.
 Etapas: 1) widgets independientes + ajustes en `%APPDATA%` (hecho); 2) publicar en
 GitHub y luego winget; 3) si crece, un centro de widgets con catálogo.
 
-- Una sola versión para todo el proyecto (SemVer desde `0.1.0`, tags `vX.Y.Z`). Cada
-  .exe lleva `VERSIONINFO` (versión, nombre, descripción, autor `frankArgomedo`) y su
-  ícono (16, 32, 48 y 256 px PNG, estilo común; cuenta para el tope de 128 KB).
+- Una sola versión para todo el proyecto (SemVer desde `0.1.0`, tags `vX.Y.Z`), en el
+  archivo `VERSION`. `build.ps1` le pone a cada .exe su `VERSIONINFO` (versión,
+  `FileDescription` = nombre del widget, producto `fidgets`, autor `frankArgomedo`) y
+  su ícono `widgets/<nombre>/icon.ico`.
+- Íconos: los genera `herramientas/iconos.py` (16, 32, 48 y 256 px PNG de 32 colores,
+  ~4 KB; cuentan para el tope de 128 KB). Estilo común: cuadrado redondeado oscuro con
+  un dibujo simple en colores de la paleta (o del juego). Al agregar un widget, se le
+  agrega su dibujo al script.
 - `CHANGELOG.md` en inglés (Keep a Changelog), indicando qué widgets cambiaron.
 - `README.md` en inglés y `README.es.md` en español, enlazados; al agregar un widget se
   actualizan los dos en el mismo commit (tabla de widgets y su sección).
 - Commits en inglés.
-- GitHub Releases: un .zip por widget y uno con todos, generados por script desde un
-  árbol limpio, con el SHA-256 de cada archivo. Sin firma de código por ahora: los .exe
-  muestran el aviso de SmartScreen (explicado en el README).
+- GitHub Releases: `.\herramientas\release.ps1` arma en `dist\<versión>\` un .zip por
+  widget y uno con todos (con LICENSE, los README y la licencia de las listas de
+  palabras si va `typing`) y `SHA256SUMS.txt`. Exige un árbol limpio y la sección de la
+  versión en el CHANGELOG. Sin firma de código por ahora: los .exe muestran el aviso de
+  SmartScreen (explicado en el README).
+- Para publicar una versión: actualizar `VERSION` y `CHANGELOG.md`, commit, tag
+  `vX.Y.Z`, `release.ps1`, y subir lo de `dist\<versión>\` a un release del tag
+  (con la sección del CHANGELOG como texto).
