@@ -6,8 +6,8 @@ menor consumo posible. Solo para Windows. El nombre juega con *fidget* (juguetea
 para matar el rato) y *widgets*.
 
 > **Transición (temporal).** El código ya cumple estas reglas (acordadas el
-> 2026-11-24); falta renombrar la carpeta del proyecto y el repositorio de GitHub,
-> que aún se llaman `bored`, y fusionar la rama. Lo pendiente está en
+> 2026-11-24) y el repositorio ya es `frankArgomedo/fidgets`; falta renombrar la
+> carpeta del proyecto, que aún se llama `bored`. Lo pendiente está en
 > `PENDIENTES-REGLAS.md`. Al terminar, se borran ese archivo y esta nota.
 
 ## Restricciones (no se negocian)
