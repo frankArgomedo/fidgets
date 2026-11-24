@@ -17,7 +17,9 @@ $version = (Get-Content (Join-Path $root "VERSION") -TotalCount 1).Trim()
 if (-not (Select-String -Path CHANGELOG.md -Pattern "^## \[$([regex]::Escape($version))\]" -Quiet)) {
   throw "CHANGELOG.md no tiene la seccion [$version]"
 }
-$dirty = git status --porcelain
+# cambios en archivos del repositorio, o archivos nuevos que entrarian en la compilacion
+$dirty = @(git status --porcelain --untracked-files=no) + @(git status --porcelain -- common widgets | Where-Object { $_ -like "??*" })
+$dirty = $dirty | Where-Object { $_ }
 if ($dirty -and -not $Prueba) { throw "Hay cambios sin commit; haz commit o usa -Prueba:`n$($dirty -join "`n")" }
 $tag = git tag --points-at HEAD
 if ($tag -notcontains "v$version") { Write-Host "Aviso: HEAD no tiene el tag v$version" -ForegroundColor Yellow }
