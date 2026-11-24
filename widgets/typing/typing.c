@@ -1,33 +1,47 @@
 /*
- * typing - test de mecanografia: escribir palabras al azar contra el reloj o por
- * cantidad, y ver WPM y precision. Mecanica tomada de monkeytype; aspecto propio.
+ * typing - test de mecanografía: escribir palabras al azar contra el reloj o por
+ * cantidad, y ver WPM y precisión. Mecánica tomada de monkeytype; aspecto propio.
  *
- *   Clic en el widget  -> darle el teclado; el test arranca con la primera letra
- *   Espacio            -> siguiente palabra (a mitad de palabra la salta)
- *   Retroceso          -> corregir; vuelve a la palabra anterior solo si tenia un error
- *   Ctrl+Retroceso     -> borrar la palabra
- *   Tab                -> reiniciar con palabras nuevas (Enter tambien, en el resultado)
- *   Esc                -> cancelar el test en curso (vuelve al inicio, mismas palabras)
- *   Clic derecho       -> modo, duracion, idioma, puntuacion, numeros, tildes, dificultad
- *
- * Calculos (como monkeytype):
+ * Cálculos (como monkeytype):
  *   WPM   = caracteres de palabras bien escritas (con su espacio) / 5, por minuto
- *   bruto = todo lo tecleado (bien, mal y de mas) / 5, por minuto
- *   precision = teclas correctas / teclas pulsadas (un error cuenta aunque se borre)
+ *   bruto = todo lo tecleado (bien, mal y de más) / 5, por minuto
+ *   precisión = teclas correctas / teclas pulsadas (un error cuenta aunque se borre)
  *
- * Ficha de tamano (ver "Tamano y espacio" en CLAUDE.md):
- *   Requisitos: 3 lineas de texto de al menos 30 caracteres (se lee la siguiente
- *     linea mientras se escribe; con menos de ~30 las palabras saltan de linea seguido).
- *   Estados persistentes: reposo, escribiendo (incl. letras de mas), resultado, fallo.
- *     Transitorio: el cursor deslizandose.
+ * Ficha (ver CLAUDE.md):
+ *   Tipo: medición.
+ *   Requisitos: 3 líneas de texto de al menos 30 caracteres (se lee la siguiente
+ *     línea mientras se escribe; con menos de ~30 las palabras saltan de línea seguido).
+ *   Estados persistentes: reposo, escribiendo (incl. letras de más), resultado, fallo;
+ *     cada uno con o sin teclado. Transitorio: el cursor deslizándose (salta con
+ *     animaciones desactivadas).
  *   Papeles: texto del test, cuenta regresiva y datos del resultado = principal
- *     (15/14/15 px); encabezado, avisos y "wpm" = secundario (12-13 px); WPM y "fallo"
+ *     (15/14/15 px); encabezado, avisos y «wpm» = secundario (12-13 px); WPM y «falló»
  *     = destacado (56 / 44 px).
- *   Celda: 280x120. Minimo: 3 lineas a 14 px con interlineado 1,5x + encabezado no
- *     entran en 80 de alto; 30 caracteres de Consolas a 14-15 px (8 px c/u) + margenes
- *     no entran en 240 de ancho. De lo que cabe, 280x120 es la de menor area. La letra
- *     no pasa de 15 px porque a 16 px (9 px por caracter) quedarian 29 caracteres;
+ *   Celda: 280x120. Mínimo: 3 líneas a 14 px con interlineado 1,5x + encabezado no
+ *     entran en 80 de alto; 30 caracteres de Consolas a 14-15 px (8 px c/u) + márgenes
+ *     no entran en 240 de ancho. De lo que cabe, 280x120 es la de menor área. La letra
+ *     no pasa de 15 px porque a 16 px (9 px por carácter) quedarían 29 caracteres;
  *     el alto que sobra (< 40 px) se reparte con interlineado 1,67x y centrando.
+ *   Al ocultar / sin foco / al cerrar: al ocultar (o suspender, o bloquear) el test se
+ *     cancela sin guardar y vuelve al inicio con las mismas palabras; sin teclado el
+ *     tiempo sigue, con el aviso «sin teclado · clic para seguir»; al cerrar se pierde.
+ *   Aviso para empezar: «clic para escribir» (es también el aviso de foco); con el
+ *     teclado, el cursor parpadea en la primera letra.
+ *   Controles: ver HELP.
+ *   Récords: el mejor WPM por combinación de modo, duración o cantidad, idioma, lista,
+ *     puntuación, números, sin tildes y dificultad (claves pb_…). Con precisión < 75 %
+ *     no cuenta («no cuenta: < 75%» en error). Récord nuevo: el WPM en accent y
+ *     «¡nuevo récord!».
+ *   Claves del .ini: mode (0 tiempo, 1 palabras); time (15, 30, 60, 120); words (10,
+ *     25, 50, 100); lang (0 español, 1 inglés: idioma de las palabras); list (200,
+ *     1000); punctuation, numbers, no_accents (0-1); difficulty (0 normal, 1 experto,
+ *     2 maestro); pb_<t|w><n>_<s|e><lista>_<punt><núm><tildes><dif> = récord (WPM x100).
+ *   Mensajes: —
+ *   Colores del juego: —
+ *   Sonido: —
+ *   Origen: mecánica y cálculos de monkeytype (GPL-3.0; se tomó la mecánica, no
+ *     código). Listas de palabras derivadas de wordfreq (CC BY-SA 4.0, ver words/LEEME.md).
+ *   Excepciones: —
  */
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -44,9 +58,6 @@
 #define TOP 33           /* y de la primera linea: bloque centrado bajo el encabezado */
 #define LH 25            /* alto de linea: 1,67x la letra (rango 1,5x-1,7x) */
 #define LINES 3
-#ifndef ANIM_FPS
-#define ANIM_FPS 45      /* mientras el cursor se desliza */
-#endif
 
 /* ------------------------------------------------------------ listas de palabras
  * Los .txt (UTF-8, una por linea, orden de frecuencia) van dentro del .exe con
@@ -209,8 +220,8 @@ static int cols = 36;
 static int line_of[MAXW], col_of[MAXW];
 
 static void update_fps(void) {
-    if (caret_moving) widget_set_fps(ANIM_FPS);
-    else if (state == RUN && mode == MODE_TIME) widget_set_fps(4);   /* cuenta regresiva */
+    if (caret_moving) widget_set_fps(FPS_MOVE);
+    else if (state == RUN && mode == MODE_TIME) widget_set_fps(FPS_COUNTER);   /* cuenta regresiva en segundos */
     else widget_set_fps(0);
 }
 
@@ -232,7 +243,7 @@ static void caret_target(int snap) {
     layout(cur);
     caret_tx = (float)(PAD + (col_of[cur] + ylen[cur]) * cw);
     caret_ty = (float)(TOP + (line_of[cur] - first_line()) * LH);
-    if (snap || caret_ty != caret_y) { caret_x = caret_tx; caret_y = caret_ty; caret_moving = 0; }
+    if (snap || caret_ty != caret_y || widget_reduce_motion()) { caret_x = caret_tx; caret_y = caret_ty; caret_moving = 0; }
     else caret_moving = caret_x != caret_tx;
     update_fps();
     widget_redraw();
@@ -378,106 +389,15 @@ static void tick(float dt) {
     }
 }
 
-/* ------------------------------------------------------------ dibujo */
-
-static void label(wchar_t *b, int with_pb) {
-    if (mode == MODE_TIME) wsprintfW(b, L"%d s", duration());
-    else wsprintfW(b, L"%d palabras", COUNTS[count_i]);
-    lstrcatW(b, lang ? L" · en" : L" · es");
-    if (big) lstrcatW(b, L" 1k");
-    if (punct) lstrcatW(b, L" · .,");
-    if (nums) lstrcatW(b, L" · 123");
-    if (diff == DIFF_EXPERT) lstrcatW(b, L" · experto");
-    if (diff == DIFF_MASTER) lstrcatW(b, L" · maestro");
-    if (with_pb && cur_pb > 0) wsprintfW(b + lstrlenW(b), L" · récord %d", (cur_pb + 50) / 100);
-}
-
-static void ch_at(int x, int y, wchar_t c, Color col) {
-    wchar_t s[2] = { c, 0 };
-    gfx_text(x, y, s, col, FONT, ALIGN_LEFT | TEXT_MONO | TEXT_SHADOW);
-}
-
-static void fmt2(wchar_t *b, int x100) { wsprintfW(b, L"%d", (x100 + 50) / 100); }
-
-static void draw_words(void) {
-    layout(nwords - 1);
-    int first = first_line();
-    for (int i = 0; i < nwords; i++) {
-        int l = line_of[i] - first;
-        if (l < 0) continue;
-        if (l >= LINES) break;
-        int x = PAD + col_of[i] * cw, y = TOP + l * LH;
-        int len = ylen[i] > tlen[i] ? ylen[i] : tlen[i];
-        for (int k = 0; k < len; k++) {
-            if (k < ylen[i] && k < tlen[i])
-                ch_at(x + k * cw, y, text[i][k], typed[i][k] == text[i][k] ? theme->text : theme->error);
-            else if (k < ylen[i]) ch_at(x + k * cw, y, typed[i][k], theme->extra);
-            else ch_at(x + k * cw, y, text[i][k], theme->sub);
-        }
-        if (i < cur && !word_ok(i)) gfx_rect(x, y + LH - 3, len * cw, 1, theme->error);
-    }
-    if (focused) gfx_rect((int)(caret_x + 0.5f) - 1, (int)caret_y + 3, 2, LH - 7, theme->accent);
-}
-
-static void draw_result(void) {
-    wchar_t b[64];
-    if (state == FAILED) {
-        gfx_text(PAD, TOP, L"falló", theme->error, 44, ALIGN_LEFT | TEXT_SHADOW);
-        gfx_text(PAD, TOP + 56, fail_reason == 1 ? L"dejaste una palabra con error" : L"tecla incorrecta",
-                 theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
-        return;
-    }
-    fmt2(b, res_wpm);
-    gfx_text(PAD, TOP - 4, b, theme->accent, 56, ALIGN_LEFT | TEXT_SHADOW);
-    int x = PAD + gfx_text_width(b, -1, 56, 0) + 4;
-    gfx_text(x, TOP + 43, L"wpm", theme->sub, 13, ALIGN_LEFT | TEXT_SHADOW);
-    int cx = 140;              /* deja lugar a un WPM de 3 cifras */
-    wsprintfW(b, L"precisión %d%%", (res_acc + 50) / 100);
-    gfx_text(cx, TOP - 2, b, theme->text, 15, ALIGN_LEFT | TEXT_SHADOW);
-    wsprintfW(b, L"bruto %d", (res_raw + 50) / 100);
-    gfx_text(cx, TOP + 24, b, theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
-    Color c = theme->sub;
-    if (res_low_acc) { lstrcpyW(b, L"no cuenta: < 75%"); c = theme->error; }
-    else if (res_new_pb) { lstrcpyW(b, L"¡nuevo récord!"); c = theme->accent; }
-    else if (res_pb > 0) wsprintfW(b, L"récord %d", (res_pb + 50) / 100);
-    else b[0] = 0;
-    if (b[0]) gfx_text(cx, TOP + 50, b, c, 15, ALIGN_LEFT | TEXT_SHADOW);
-}
-
-static void draw(void) {
-    wchar_t b[96];
-    gfx_clear_hit();
-    if (state == RUN && mode == MODE_TIME) {
-        int left = duration() - (int)(now_seconds() - t0);
-        wsprintfW(b, L"%d", left < 0 ? 0 : left);
-        gfx_text(PAD, 4, b, theme->accent, 14, ALIGN_LEFT | TEXT_SHADOW);
-    } else if (state == RUN) {
-        wsprintfW(b, L"%d/%d", cur, total_words());
-        gfx_text(PAD, 4, b, theme->accent, 14, ALIGN_LEFT | TEXT_SHADOW);
-    }
-    const wchar_t *hint = state >= DONE ? L"tab: repetir" : (!focused ? L"clic para escribir" : 0);
-    if (state != RUN) {                     /* el modo (y el record), si caben junto al aviso */
-        int room = W - 2 * PAD - (hint ? gfx_text_width(hint, -1, 12, 0) + 10 : 0);
-        for (int with_pb = 1; with_pb >= 0; with_pb--) {
-            label(b, with_pb && state == IDLE);
-            if (gfx_text_width(b, -1, 12, 0) <= room) { gfx_text(PAD, 4, b, theme->sub, 12, ALIGN_LEFT | TEXT_SHADOW); break; }
-        }
-    }
-    if (hint) gfx_text(W - PAD, 4, hint, state >= DONE ? theme->sub : theme->accent, 12, ALIGN_RIGHT | TEXT_SHADOW);
-
-    if (state >= DONE) draw_result();
-    else draw_words();
-}
-
-/* ------------------------------------------------------------ menu y arranque */
-
 /* Textos de la interfaz (ver «Idiomas y textos» en CLAUDE.md). */
 enum {
     T_NONE, T_TITLE, T_MODE, T_TIME_15, T_TIME_30, T_TIME_60, T_TIME_120,
     T_WORDS_10, T_WORDS_25, T_WORDS_50, T_WORDS_100,
     T_PUNCT, T_NUMS, T_NO_ACCENTS, T_WORDLIST, T_SPANISH, T_ENGLISH, T_LIST_200, T_LIST_1000,
     T_DIFF, T_DIFF_0, T_DIFF_1, T_DIFF_2, T_CLEAR, T_CLEAR_YES,
-    T_H_CLICK, T_H_SPACE, T_H_BACK, T_H_CTRL_BACK, T_H_TAB, T_H_ESC, T_COUNT
+    T_H_CLICK, T_H_SPACE, T_H_BACK, T_H_CTRL_BACK, T_H_TAB, T_H_ESC,
+    T_LBL_TIME, T_LBL_WORDS, T_LBL_EXPERT, T_LBL_MASTER, T_LBL_RECORD, T_CLICK_TYPE,
+    T_FAILED, T_FAIL_WORD, T_FAIL_KEY, T_WPM, T_ACC, T_RAW, T_LOW_ACC, T_NEW_RECORD, T_RECORD, T_COUNT
 };
 static const wchar_t *const TXT_ES[T_COUNT] = {
     [T_TITLE] = L"Teclear",
@@ -501,6 +421,13 @@ static const wchar_t *const TXT_ES[T_COUNT] = {
     [T_H_CTRL_BACK] = L"Ctrl+Retroceso · borrar la palabra",
     [T_H_TAB] = L"Tab · palabras nuevas",
     [T_H_ESC] = L"Esc · cancelar el test",
+    [T_LBL_TIME] = L"%d s", [T_LBL_WORDS] = L"%d palabras",
+    [T_LBL_EXPERT] = L" · experto", [T_LBL_MASTER] = L" · maestro", [T_LBL_RECORD] = L" · récord %d",
+    [T_CLICK_TYPE] = L"clic para escribir",
+    [T_FAILED] = L"falló",
+    [T_FAIL_WORD] = L"dejaste una palabra con error", [T_FAIL_KEY] = L"tecla incorrecta",
+    [T_WPM] = L"wpm", [T_ACC] = L"precisión %d%%", [T_RAW] = L"bruto %d",
+    [T_LOW_ACC] = L"no cuenta: < 75%", [T_NEW_RECORD] = L"¡nuevo récord!", [T_RECORD] = L"récord %d",
 };
 static const wchar_t *const TXT_EN[T_COUNT] = {
     [T_TITLE] = L"Typing",
@@ -524,7 +451,114 @@ static const wchar_t *const TXT_EN[T_COUNT] = {
     [T_H_CTRL_BACK] = L"Ctrl+Backspace · delete the word",
     [T_H_TAB] = L"Tab · new words",
     [T_H_ESC] = L"Esc · cancel the test",
+    [T_LBL_TIME] = L"%d s", [T_LBL_WORDS] = L"%d words",
+    [T_LBL_EXPERT] = L" · expert", [T_LBL_MASTER] = L" · master", [T_LBL_RECORD] = L" · record %d",
+    [T_CLICK_TYPE] = L"click to type",
+    [T_FAILED] = L"failed",
+    [T_FAIL_WORD] = L"you left a word wrong", [T_FAIL_KEY] = L"wrong key",
+    [T_WPM] = L"wpm", [T_ACC] = L"accuracy %d%%", [T_RAW] = L"raw %d",
+    [T_LOW_ACC] = L"not valid: < 75%", [T_NEW_RECORD] = L"new record!", [T_RECORD] = L"record %d",
 };
+
+/* ------------------------------------------------------------ dibujo */
+
+static void label(wchar_t *b, int with_pb) {
+    if (mode == MODE_TIME) wsprintfW(b, tr(T_LBL_TIME), duration());
+    else wsprintfW(b, tr(T_LBL_WORDS), COUNTS[count_i]);
+    lstrcatW(b, lang ? L" · en" : L" · es");            /* códigos de idioma: no se traducen */
+    if (big) lstrcatW(b, L" 1k");
+    if (punct) lstrcatW(b, L" · .,");
+    if (nums) lstrcatW(b, L" · 123");
+    if (diff == DIFF_EXPERT) lstrcatW(b, tr(T_LBL_EXPERT));
+    if (diff == DIFF_MASTER) lstrcatW(b, tr(T_LBL_MASTER));
+    if (with_pb && cur_pb > 0) wsprintfW(b + lstrlenW(b), tr(T_LBL_RECORD), (cur_pb + 50) / 100);
+}
+
+static void ch_at(int x, int y, wchar_t c, Color col) {
+    wchar_t s[2] = { c, 0 };
+    gfx_text(x, y, s, col, FONT, ALIGN_LEFT | TEXT_MONO | TEXT_SHADOW);
+}
+
+static void fmt2(wchar_t *b, int x100) { wsprintfW(b, L"%d", (x100 + 50) / 100); }
+
+static void draw_words(void) {
+    layout(nwords - 1);
+    int first = first_line();
+    for (int i = 0; i < nwords; i++) {
+        int l = line_of[i] - first;
+        if (l < 0) continue;
+        if (l >= LINES) break;
+        int x = PAD + col_of[i] * cw, y = TOP + l * LH;
+        int len = ylen[i] > tlen[i] ? ylen[i] : tlen[i];
+        for (int k = 0; k < len; k++) {
+            /* un error lleva también subrayado, no solo color (se distingue sin ver colores) */
+            if (k < ylen[i] && k < tlen[i]) {
+                int bad = typed[i][k] != text[i][k];
+                ch_at(x + k * cw, y, text[i][k], bad ? theme->error : theme->text);
+                if (bad) gfx_rect(x + k * cw, y + LH - 5, cw - 1, 1, theme->error);
+            } else if (k < ylen[i]) {
+                ch_at(x + k * cw, y, typed[i][k], theme->extra);
+                gfx_rect(x + k * cw, y + LH - 5, cw - 1, 1, theme->extra);
+            } else ch_at(x + k * cw, y, text[i][k], theme->sub);
+        }
+        if (i < cur && !word_ok(i)) gfx_rect(x, y + LH - 3, len * cw, 1, theme->error);
+    }
+    if (focused) gfx_rect((int)(caret_x + 0.5f) - 1, (int)caret_y + 3, 2, LH - 7, theme->accent);
+}
+
+static void draw_result(void) {
+    wchar_t b[64];
+    if (state == FAILED) {
+        gfx_text(PAD, TOP, tr(T_FAILED), theme->error, 44, ALIGN_LEFT | TEXT_SHADOW);
+        gfx_text(PAD, TOP + 56, tr(fail_reason == 1 ? T_FAIL_WORD : T_FAIL_KEY),
+                 theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
+        return;
+    }
+    fmt2(b, res_wpm);
+    /* el WPM va en accent solo si es récord nuevo (regla de récords) */
+    gfx_text(PAD, TOP - 4, b, res_new_pb ? theme->accent : theme->text, 56, ALIGN_LEFT | TEXT_SHADOW);
+    int x = PAD + gfx_text_width(b, -1, 56, 0) + 4;
+    gfx_text(x, TOP + 43, tr(T_WPM), theme->sub, 13, ALIGN_LEFT | TEXT_SHADOW);
+    int cx = 140;              /* deja lugar a un WPM de 3 cifras */
+    wsprintfW(b, tr(T_ACC), (res_acc + 50) / 100);
+    gfx_text(cx, TOP - 2, b, theme->text, 15, ALIGN_LEFT | TEXT_SHADOW);
+    wsprintfW(b, tr(T_RAW), (res_raw + 50) / 100);
+    gfx_text(cx, TOP + 24, b, theme->sub, 15, ALIGN_LEFT | TEXT_SHADOW);
+    Color c = theme->sub;
+    if (res_low_acc) { lstrcpyW(b, tr(T_LOW_ACC)); c = theme->error; }
+    else if (res_new_pb) { lstrcpyW(b, tr(T_NEW_RECORD)); c = theme->accent; }
+    else if (res_pb > 0) wsprintfW(b, tr(T_RECORD), (res_pb + 50) / 100);
+    else b[0] = 0;
+    if (b[0]) gfx_text(cx, TOP + 50, b, c, 15, ALIGN_LEFT | TEXT_SHADOW);
+}
+
+static void draw(void) {
+    wchar_t b[96];
+    gfx_clear_hit();
+    if (state == RUN && mode == MODE_TIME) {
+        int left = duration() - (int)(now_seconds() - t0);
+        wsprintfW(b, L"%d", left < 0 ? 0 : left);
+        gfx_text(PAD, 4, b, theme->accent, 14, ALIGN_LEFT | TEXT_SHADOW);
+    } else if (state == RUN) {
+        wsprintfW(b, L"%d/%d", cur, total_words());
+        gfx_text(PAD, 4, b, theme->accent, 14, ALIGN_LEFT | TEXT_SHADOW);
+    }
+    /* aviso de foco: «clic para escribir» y, con el test corriendo, «sin teclado · clic para seguir» */
+    const wchar_t *hint = focused ? 0 : (state == RUN ? tr_base(TB_NO_KEYBOARD) : tr(T_CLICK_TYPE));
+    if (state != RUN) {                     /* el modo (y el record), si caben junto al aviso */
+        int room = W - 2 * PAD - (hint ? gfx_text_width(hint, -1, 12, 0) + 10 : 0);
+        for (int with_pb = 1; with_pb >= 0; with_pb--) {
+            label(b, with_pb && state == IDLE);
+            if (gfx_text_width(b, -1, 12, 0) <= room) { gfx_text(PAD, 4, b, theme->sub, 12, ALIGN_LEFT | TEXT_SHADOW); break; }
+        }
+    }
+    if (hint) gfx_text(W - PAD, 4, hint, theme->accent, 12, ALIGN_RIGHT | TEXT_SHADOW);
+
+    if (state >= DONE) draw_result();
+    else draw_words();
+}
+
+/* ------------------------------------------------------------ menu y arranque */
 
 static const int LISTS[2] = { 200, 1000 };
 enum {
@@ -631,7 +665,7 @@ static void on_menu(int i) {
 }
 
 static void focus(int f) { focused = f; widget_redraw(); }
-static void hide(int h) { if (h && state == RUN) restart(); }
+static void hide(int h) { if (h && state == RUN) retry(); }   /* medición: se cancela sin guardar, mismas palabras */
 
 static void init(void) {
     load_cfg();

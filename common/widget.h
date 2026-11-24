@@ -32,7 +32,7 @@
  *
  * Pruebas sin ventana (modo foto): FIDGETS_SNAPSHOT=archivo dibuja una vez y sale.
  * FIDGETS_EVENTS es un guion de eventos en orden, separados por espacios:
- *   key:17,24   scan codes en hex (pulsar)        text:hola\sque   texto para on_char
+ *   key:17,24   scan codes en hex (pulsar; vk se deduce)  text:hola\sque   texto para on_char
  *   click:80,68 clic (bajar y subir) en x,y       tick:500         ms simulados
  *   hide / show / focus / blur                    lang:es | lang:en
  * En text: \s espacio, \b retroceso, \t Tab, \n Enter; cada carácter avanza 100 ms
@@ -186,6 +186,10 @@ void gfx_poly(const float *xy, int n, Color c); /* polígono CONVEXO, xy = x0,y0
 void gfx_text(int x, int y, const wchar_t *s, Color c, int size, int align);
 /* ancho lógico de los primeros n caracteres de s (n < 0 = todo); flags: TEXT_MONO */
 int  gfx_text_width(const wchar_t *s, int n, int size, int flags);
+/* texto que se parte en dos líneas (en " · " o en un espacio) si no cabe a lo ancho
+ * del widget dentro del margen; interlineado 1,5x. Devuelve las líneas (1 o 2). */
+int  gfx_text_lines(const wchar_t *s, int size, int flags);
+int  gfx_text_wrap(int x, int y, const wchar_t *s, Color c, int size, int align);
 
 /* Utilidades. */
 uint32_t rnd(void);                /* xorshift, ya sembrado (FIDGETS_SEED lo fija) */

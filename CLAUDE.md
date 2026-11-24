@@ -127,7 +127,9 @@ velocidad que va a récord: `cube`, `typing`), *juego* (`dot`, puzles) u *otro*.
 
 - Sin panel de fondo por defecto: `gfx_clear_hit()` deja el fondo invisible pero
   agarrable con cualquier opacidad. Los píxeles con alfa final 0 dejan pasar el clic.
-- Texto siempre con `| TEXT_SHADOW`. `TEXT_MONO` = Consolas.
+- Texto siempre con `| TEXT_SHADOW`. `TEXT_MONO` = Consolas. Un aviso que puede no
+  caber a lo ancho (p.ej. los comunes de la base en un widget de 160 px) se dibuja con
+  `gfx_text_wrap`, que lo parte en dos líneas en « · ».
 - La opacidad (solo desde el menú) se aplica a todo el widget; el usuario la tiene
   casi siempre baja (~25 %) y a veces la sube.
 - **Paleta común** `theme->…`, nunca colores sueltos para la interfaz:

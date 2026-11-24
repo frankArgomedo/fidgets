@@ -1,41 +1,106 @@
 /*
  * cube - timer de speedcubing con cubo virtual 3x3 manejado con el teclado.
  *
- * Mapa de teclas y flujo del timer tomados de csTimer (modo "virtual"):
- *   Espacio  -> mezcla (y, si esta activa, inspeccion de 15 s)
- *   El primer giro que no sea rotacion arranca el tiempo; al resolver se detiene.
- *   Esc      -> aborta (durante el tiempo cuenta como DNF)
- *   El mapa de teclas esta en el widget aparte "keys".
- * Las teclas se leen por POSICION fisica (scan code), asi el mapa es el mismo
- * con teclado espanol/latino que con uno en ingles (la tecla de la n es ";").
+ * Flujo del timer como csTimer (modo "virtual"): Espacio mezcla (y, si está activa,
+ * empieza la inspección de 15 s); el primer giro que no sea rotación arranca el
+ * tiempo; al resolver se detiene. Esc aborta (con el tiempo corriendo es DNF).
+ * Las teclas se leen por POSICIÓN física (scan code), así el mapa es el mismo con
+ * teclado español/latino que con uno en inglés (la tecla de la ñ es ";").
  *
- * Modelo: 54 pegatinas con posicion y normal enteras; cada giro rota 90 grados
- * las que estan en las capas afectadas. Sirve igual para caras, capas
+ * Modelo: 54 pegatinas con posición y normal enteras; cada giro rota 90 grados
+ * las que están en las capas afectadas. Sirve igual para caras, capas
  * centrales (M E S), giros dobles (r l u d) y rotaciones (x y z).
+ *
+ * Ficha (ver CLAUDE.md):
+ *   Tipo: medición.
+ *   Requisitos: tiempo legible y el cubo al menos del tamaño validado (escala 225:
+ *     pegatinas frontales de ~27 px, caras laterales distinguibles con opacidad baja).
+ *   Estados persistentes: reposo (con o sin resultado), inspección, listo y tiempo
+ *     corriendo, con cualquier cámara (13 x 13 ángulos); cada uno con o sin teclado.
+ *     Transitorios: los giros (100 ms por defecto; instantáneos con animaciones
+ *     desactivadas).
+ *   Papeles: tiempo = destacado (28 px); avisos = secundario (12 px); cubo = gráfico.
+ *   Celda: 160x200. Mínimo: cubo de 126x134 en el peor ángulo + tiempo -> no entra en
+ *     120 de ancho ni en 160 de alto. El cubo se agranda (escala 261) hasta que en el
+ *     ángulo más ancho llega a 7 px del borde.
+ *   Al ocultar / sin foco / al cerrar: al ocultar (o suspender, o bloquear) se cancela
+ *     la resolución sin penalizar; sin teclado el tiempo sigue, con el aviso «sin
+ *     teclado · clic para seguir»; al cerrar se pierde la resolución en curso.
+ *   Aviso para empezar: «espacio: mezclar», hasta el primer resultado.
+ *   Controles: ver HELP.
+ *   Récords: el mejor tiempo («best»); ningún ajuste lo separa. Un DNF no cuenta.
+ *     Récord nuevo: el tiempo en accent. Solo se muestran el tiempo y el cubo
+ *     (preferencia del usuario); las últimas 12 se guardan aunque no se dibujen.
+ *   Claves del .ini: best = mejor tiempo en ms (0 = sin récord); t0…t11 = últimos
+ *     tiempos en ms (-1 DNF, -2 vacío); inspection (0-1); turn_ms (0, 50, 100, 200);
+ *     cam_t, cam_p (-6..6, pasos de 7,5°); map = mapa de teclas abierto (0-1).
+ *     Sección [keys]: posición y opacidad del mapa (las pone la base).
+ *   Mensajes: envía MSG_KEY_USED y MSG_CLOSE_MAP a keys; recibe MSG_MAP_CLOSED.
+ *   Colores del juego: FACE_COL = colores de las caras (los de csTimer, estándar de
+ *     un cubo real); BODY_COL = borde negro de las pegatinas.
+ *   Sonido: —
+ *   Origen: mapa de teclas, flujo del timer, cámara y colores de csTimer (GPL-3.0;
+ *     se tomaron la mecánica y las convenciones, no código). Solver de dos fases de
+ *     Kociemba: implementación propia (twophase.c).
+ *   Excepciones: —
  */
 #include "widget.h"
 #include "twophase.h"
 #include <windows.h>
 #include <string.h>
-
-/* Ficha de tamano (ver "Tamano y espacio" en CLAUDE.md):
- *   Requisitos: tiempo legible y el cubo al menos del tamano validado (escala 225:
- *     pegatinas frontales de ~27 px, caras laterales distinguibles con opacidad baja).
- *   Estados persistentes: reposo e inspeccion/tiempo con cualquier camara (13 x 13
- *     angulos); transitorios: los giros (100 ms).
- *   Papeles: tiempo = destacado (28 px); cubo = grafico.
- *   Celda: 160x200. Minimo: cubo de 126x134 en el peor angulo + tiempo -> no entra en
- *     120 de ancho ni en 160 de alto. El cubo se agranda (escala 261) hasta que en el
- *     angulo mas ancho llega a 7 px del borde. */
-#define W 160
-#define H 200   /* cuadricula de 40 px: 4x5 modulos */
 #include <math.h>
+
+#define W 160
+#define H 200   /* cuadrícula de 40 px: 4x5 módulos */
 #define CX 80.0f
 #define CY 118.0f  /* el cubo llena el ancho y queda debajo del tiempo */
+
+/* Textos de la interfaz (ver «Idiomas y textos» en CLAUDE.md). */
+enum {
+    T_NONE, T_TITLE, T_INSPECTION, T_KEYMAP, T_SPEED, T_SPEED_0, T_SPEED_50, T_SPEED_100, T_SPEED_200,
+    T_CLEAR, T_CLEAR_YES, T_H_SPACE, T_H_KEYS, T_H_ARROWS, T_H_ESC,
+    T_DNF, T_PLUS2, T_HINT_START, T_CLICK_KEYBOARD, T_COUNT
+};
+static const wchar_t *const TXT_ES[T_COUNT] = {
+    [T_TITLE] = L"Cubo",
+    [T_INSPECTION] = L"Inspección 15 s",
+    [T_KEYMAP] = L"Mapa de teclas",
+    [T_SPEED] = L"Velocidad de giro",
+    [T_SPEED_0] = L"Instantánea",
+    [T_SPEED_50] = L"Rápida (50 ms)",
+    [T_SPEED_100] = L"Normal (100 ms)",
+    [T_SPEED_200] = L"Lenta (200 ms)",
+    [T_CLEAR] = L"Borrar tiempos y récord",
+    [T_CLEAR_YES] = L"Sí, borrar todo",
+    [T_H_SPACE] = L"Espacio · mezclar",
+    [T_H_KEYS] = L"Letras · girar (ver Mapa de teclas)",
+    [T_H_ARROWS] = L"Flechas · girar la cámara",
+    [T_H_ESC] = L"Esc · abortar (con el tiempo corriendo: DNF)",
+    [T_DNF] = L"DNF",
+    [T_PLUS2] = L"+2",
+    [T_HINT_START] = L"espacio: mezclar",
+    [T_CLICK_KEYBOARD] = L"clic para usar el teclado",
+};
+static const wchar_t *const TXT_EN[T_COUNT] = {
+    [T_TITLE] = L"Cube",
+    [T_INSPECTION] = L"15 s inspection",
+    [T_KEYMAP] = L"Key map",
+    [T_SPEED] = L"Turn speed",
+    [T_SPEED_0] = L"Instant",
+    [T_SPEED_50] = L"Fast (50 ms)",
+    [T_SPEED_100] = L"Normal (100 ms)",
+    [T_SPEED_200] = L"Slow (200 ms)",
+    [T_CLEAR] = L"Clear times and record",
+    [T_CLEAR_YES] = L"Yes, clear everything",
+    [T_H_SPACE] = L"Space · scramble",
+    [T_H_KEYS] = L"Letters · turn (see Key map)",
+    [T_H_ARROWS] = L"Arrows · rotate the camera",
+    [T_H_ESC] = L"Esc · abort (while timing: DNF)",
+    [T_HINT_START] = L"space: scramble",
+    [T_CLICK_KEYBOARD] = L"click to use the keyboard",
+};
+
 /* aspecto (se pueden cambiar al compilar con -D para probar variantes) */
-#ifndef ANIM_FPS
-#define ANIM_FPS 45        /* fps al animar un giro: 45 gasta ~40% menos CPU que 60 y sigue fluido */
-#endif
 #ifndef STICKER_HALF
 #define STICKER_HALF 0.435f /* media pegatina: 0.435 = 87% de la celda (csTimer usa 90%); deja ver mas las caras ocultas */
 #endif
@@ -48,11 +113,13 @@
 typedef struct { signed char p[3], n[3]; unsigned char col; } Sticker;
 static Sticker st[54];
 
-/* Colores de csTimer: U blanco, R rojo, F verde, D amarillo, L naranja, B azul */
+/* Colores del juego (no siguen al tema). Caras como csTimer: U blanco, R rojo,
+ * F verde, D amarillo, L naranja, B azul; borde negro de las pegatinas. */
 static const Color FACE_COL[6] = {
     RGBA(255, 255, 255, 255), RGBA(255, 0, 0, 255), RGBA(0, 255, 0, 255),
     RGBA(255, 255, 0, 255), RGBA(255, 144, 0, 255), RGBA(0, 0, 255, 255),
 };
+#define BODY_COL RGBA(0, 0, 0, 255)
 
 static int face_index(const signed char *n) {
     if (n[1] > 0) return 0;
@@ -121,7 +188,7 @@ static void start_next(void) {
 
 static void anim_push(int ax, int lo, int hi, int q) {
     Move m = { (signed char)ax, (signed char)lo, (signed char)hi, (signed char)q };
-    if (turn_ms <= 0 || nq == 64) {             /* instantaneo o cola llena: aplicar todo ya */
+    if (turn_ms <= 0 || nq == 64 || widget_reduce_motion()) {   /* instantáneo o cola llena: aplicar todo ya */
         for (int i = 0; i < nact; i++) move_on(vis, active[i].ax, active[i].lo, active[i].hi, active[i].q);
         for (int i = 0; i < nq; i++) move_on(vis, queue[i].ax, queue[i].lo, queue[i].hi, queue[i].q);
         nq = nact = 0;
@@ -215,6 +282,7 @@ static int state = IDLE, use_ins, focused;
 static double t0;
 static int penalty;          /* 0, 2000 o -1 (DNF) */
 static int moves, last_ms = -2, last_pen, last_moves, last_cs; /* last_ms -2: sin tiempo */
+static int last_best;        /* el último tiempo fue récord nuevo */
 static int times[12], ntimes, best;
 
 static void load_stats(void) {
@@ -243,7 +311,8 @@ static void record(int ms) {
     for (int i = 11; i > 0; i--) times[i] = times[i - 1];
     times[0] = ms;
     if (ntimes < 12) ntimes++;
-    if (ms >= 0 && (best == 0 || ms < best)) best = ms;
+    last_best = ms >= 0 && (best == 0 || ms < best);
+    if (last_best) best = ms;
     save_stats();
 }
 
@@ -271,9 +340,10 @@ static void fmt(wchar_t *b, int ms) {
     else wsprintfW(b, L"%d.%02d", cs / 100, cs % 100);
 }
 
-/* ANIM_FPS solo mientras se anima un giro; 20 con el tiempo corriendo; 10 en inspeccion; 0 en reposo */
+/* giro animándose: FPS_MOVE; tiempo corriendo (centésimas): FPS_CLOCK; inspección
+ * (segundos): FPS_COUNTER; reposo: 0 */
 static void update_fps(void) {
-    widget_set_fps(animating() ? ANIM_FPS : (state == RUN ? 20 : (state == INSPECT ? 10 : 0)));
+    widget_set_fps(animating() ? FPS_MOVE : (state == RUN ? FPS_CLOCK : (state == INSPECT ? FPS_COUNTER : 0)));
 }
 
 static void tick(float dt) {
@@ -304,11 +374,21 @@ static void finish(double now) {
     update_fps();
 }
 
+/* Esc: con el tiempo corriendo cuenta como DNF (convención de csTimer) */
 static void abort_solve(void) {
     if (state == RUN) {
         last_ms = -1; last_pen = -1; last_moves = moves; last_cs = (int)((now_seconds() - t0) * 1000);
         record(-1);
     }
+    state = IDLE;
+    reset_cube();
+    sync_vis();
+    update_fps();
+}
+
+/* el widget dejó de poder usarse: la medición se cancela sin penalizar ni guardar */
+static void cancel_solve(void) {
+    if (state == IDLE) return;
     state = IDLE;
     reset_cube();
     sync_vis();
@@ -337,6 +417,7 @@ static int key(int vk, int scan, int down) {
             scramble();
             sync_vis();                           /* la mezcla se aplica sin animacion */
             state = use_ins ? INSPECT : READY;
+            last_best = 0;
             t0 = now_seconds();
             update_fps();
             widget_redraw();
@@ -457,7 +538,7 @@ static void sticker(int ax, int s, float ca, float cb, int rax, float co, float 
     float ev = (dist2d(q + 2, q + 4) + dist2d(q, q + 6)) * 0.5f;   /* lados en direccion v */
     float bu = border_for(ev > 0 ? area / ev : 0), bv = border_for(eu > 0 ? area / eu : 0);
     if (bu > 0 || bv > 0) {
-        gfx_poly(q, 4, RGBA(0, 0, 0, 255));
+        gfx_poly(q, 4, BODY_COL);
         quad(ax, s, ca, cb, STICKER_HALF - bu, STICKER_HALF - bv, rax, co, si, q);
     }
     gfx_poly(q, 4, c);
@@ -510,19 +591,27 @@ static void draw(void) {
     if (state == RUN) fmt(b, (int)((now - t0) * 1000));
     else if (state == INSPECT) {
         double e = now - t0;
-        if (e > 17) { lstrcpyW(b, L"DNF"); tc = theme->error; }
-        else if (e > 15) { lstrcpyW(b, L"+2"); tc = theme->error; }
+        if (e > 17) { lstrcpyW(b, tr(T_DNF)); tc = theme->error; }
+        else if (e > 15) { lstrcpyW(b, tr(T_PLUS2)); tc = theme->error; }
         else { wsprintfW(b, L"%d", 15 - (int)e); tc = theme->accent; }
     } else if (state == READY) lstrcpyW(b, L"0.00");
     else {
-        fmt(b, last_ms < -1 ? 0 : last_ms);
+        if (last_ms == -1) lstrcpyW(b, tr(T_DNF));
+        else fmt(b, last_ms < -1 ? 0 : last_ms);
         if (last_pen == 2000) lstrcatW(b, L"+");
         if (last_ms == -1) tc = theme->error;
+        else if (last_best) tc = theme->accent;   /* récord nuevo */
     }
     gfx_text(W / 2, -3, b, tc, 28, ALIGN_CENTER | TEXT_SHADOW);
 
     draw_cube();
 
+    /* avisos abajo, sobre el cubo: sin teclado (siempre) o cómo empezar (hasta el primer resultado) */
+    const wchar_t *note = 0;
+    Color nc = theme->accent;
+    if (!focused) note = state == IDLE ? tr(T_CLICK_KEYBOARD) : tr_base(TB_NO_KEYBOARD);
+    else if (state == IDLE && last_ms == -2) { note = tr(T_HINT_START); nc = theme->sub; }
+    if (note) gfx_text_wrap(W / 2, H - MARGIN - 17 - (gfx_text_lines(note, 12, 0) - 1) * 18, note, nc, 12, ALIGN_CENTER | TEXT_SHADOW);
 }
 
 /* ------------------------------------------------------------ mapa de teclas
@@ -568,44 +657,6 @@ static void message(int code, int value) {
 static void closed(int by_user) { (void)by_user; close_map(); }
 
 /* ------------------------------------------------------------ menu y arranque */
-
-/* Textos de la interfaz (ver «Idiomas y textos» en CLAUDE.md). */
-enum {
-    T_NONE, T_TITLE, T_INSPECTION, T_KEYMAP, T_SPEED, T_SPEED_0, T_SPEED_50, T_SPEED_100, T_SPEED_200,
-    T_CLEAR, T_CLEAR_YES, T_H_SPACE, T_H_KEYS, T_H_ARROWS, T_H_ESC, T_COUNT
-};
-static const wchar_t *const TXT_ES[T_COUNT] = {
-    [T_TITLE] = L"Cubo",
-    [T_INSPECTION] = L"Inspección 15 s",
-    [T_KEYMAP] = L"Mapa de teclas",
-    [T_SPEED] = L"Velocidad de giro",
-    [T_SPEED_0] = L"Instantánea",
-    [T_SPEED_50] = L"Rápida (50 ms)",
-    [T_SPEED_100] = L"Normal (100 ms)",
-    [T_SPEED_200] = L"Lenta (200 ms)",
-    [T_CLEAR] = L"Borrar tiempos y récord",
-    [T_CLEAR_YES] = L"Sí, borrar todo",
-    [T_H_SPACE] = L"Espacio · mezclar",
-    [T_H_KEYS] = L"Letras · girar (ver Mapa de teclas)",
-    [T_H_ARROWS] = L"Flechas · girar la cámara",
-    [T_H_ESC] = L"Esc · abortar",
-};
-static const wchar_t *const TXT_EN[T_COUNT] = {
-    [T_TITLE] = L"Cube",
-    [T_INSPECTION] = L"15 s inspection",
-    [T_KEYMAP] = L"Key map",
-    [T_SPEED] = L"Turn speed",
-    [T_SPEED_0] = L"Instant",
-    [T_SPEED_50] = L"Fast (50 ms)",
-    [T_SPEED_100] = L"Normal (100 ms)",
-    [T_SPEED_200] = L"Slow (200 ms)",
-    [T_CLEAR] = L"Clear times and record",
-    [T_CLEAR_YES] = L"Yes, clear everything",
-    [T_H_SPACE] = L"Space · scramble",
-    [T_H_KEYS] = L"Letters · turn (see Key map)",
-    [T_H_ARROWS] = L"Arrows · rotate the camera",
-    [T_H_ESC] = L"Esc · abort",
-};
 
 /* velocidades de giro de csTimer: duración de cada giro en ms (0 = instantáneo) */
 static const int SPEEDS[4] = { 0, 50, 100, 200 };
@@ -663,7 +714,7 @@ static void init(void) {
     map_on = cfg_get_range(L"map", 0, 0, 1);
     if (map_on) open_map();
 }
-static void hide(int h) { if (h && state != IDLE) abort_solve(); }
+static void hide(int h) { if (h) cancel_solve(); }   /* medición: se cancela sin penalizar */
 
 int main(void) {
     if (wcsstr(GetCommandLineW(), L"--keys")) return keys_main();

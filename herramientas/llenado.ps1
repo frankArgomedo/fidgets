@@ -29,16 +29,24 @@ foreach ($cam in @("cam_t=0`r`ncam_p=6", "cam_t=6`r`ncam_p=6")) {
     $casos += , @("cube", "", "[cube]`r`n$cam`r`nturn_ms=100", "key:$($k[0]) tick:50", "cube giro $($k[1]) a 45 ($($cam -replace "`r`n", ' '))", $true, "")
   }
 }
+# avisos: como empezar (con teclado, sin resultado) y sin teclado con el tiempo corriendo
+$casos += , @("cube", "", "", "focus", "cube aviso para empezar", $false, "cube (todas las camaras)")
+$casos += , @("cube", "", "", "focus key:39 key:24 tick:1500 blur", "cube sin teclado", $false, "cube (todas las camaras)")
 $casos += , @("cube", "--keys", "", "", "mapa reposo", $false, "mapa")
 $casos += , @("cube", "--keys", "", "key:17 tick:60", "mapa tecla iluminada", $false, "mapa")
 $casos += , @("typing", "", "", "", "typing reposo", $false, "typing texto")
 $casos += , @("typing", "", "[typing]`r`npunctuation=1`r`nnumbers=1`r`nlang=1`r`nlist=1000", "", "typing puntuacion", $false, "typing texto")
 $casos += , @("typing", "", "", "text:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", "typing letras de mas", $false, "typing texto")
+$casos += , @("typing", "", "", "text:hola blur", "typing sin teclado", $false, "typing texto")
 $casos += , @("typing", "", "[typing]`r`nmode=1`r`nwords=10", "text:q\sw\se\sr\st\sy\su\si\so\sp\s", "typing resultado", $false, "typing resultado")
-$casos += , @("typing", "", "[typing]`r`ndifficulty=2", "text:##", "typing fallo", $false, "typing fallo")
+$casos += , @("typing", "", "[typing]`r`nmode=1`r`nwords=10`r`npb_w10_s200_0000=500", "text:q\sw\se\sr\st\sy\su\si\so\sp\s", "typing resultado con record", $false, "typing resultado")
+$casos += , @("typing", "", "[typing]`r`ndifficulty=2", "text:##", "typing fallo", $false, "typing resultado")
 $casos += , @("dot", "", "", "", "dot reposo", $false, "")
 # jugando: los puntos aparecen al azar en toda la celda (no cuenta para el llenado)
 $casos += , @("dot", "", "", "click:80,68 tick:300", "dot jugando", $false, "")
+$casos += , @("dot", "", "", "click:80,68 tick:300 hide show", "dot en pausa", $false, "")
+$casos += , @("dot", "", "", "click:80,68 tick:6000", "dot resultado", $false, "")
+$casos += , @("dot", "", "[dot]`r`nbest=99", "click:80,68 tick:6000", "dot resultado sin record", $false, "")
 
 $fallos = 0
 $grupos = [ordered]@{}

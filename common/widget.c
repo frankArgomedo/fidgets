@@ -440,6 +440,36 @@ void gfx_text(int x, int y, const wchar_t *s, Color c, int size, int align) {
     }
 }
 
+/* Texto que se parte en dos líneas si no cabe a lo ancho del widget (dentro del
+ * margen): se corta en " · " o, si no hay, en el último espacio antes de la mitad. */
+static int split_at(const wchar_t *s, int *skip) {
+    int n = lstrlenW(s), best = -1;
+    for (int i = 0; i + 2 < n; i++)
+        if (s[i] == L' ' && s[i + 1] == 0x00B7 && s[i + 2] == L' ') { *skip = 3; return i; }
+    for (int i = 0; i < n; i++) if (s[i] == L' ' && (best < 0 || i <= n / 2)) best = i;
+    *skip = 1;
+    return best;
+}
+
+int gfx_text_lines(const wchar_t *s, int size, int flags) {
+    int skip;
+    if (gfx_text_width(s, -1, size, flags) + 2 <= PW / S - 2 * MARGIN) return 1;   /* +2: sombra y redondeo */
+    return split_at(s, &skip) >= 0 ? 2 : 1;
+}
+
+int gfx_text_wrap(int x, int y, const wchar_t *s, Color c, int size, int align) {
+    int skip, at;
+    if (gfx_text_lines(s, size, align) == 1 || (at = split_at(s, &skip)) < 0) {
+        gfx_text(x, y, s, c, size, align);
+        return 1;
+    }
+    wchar_t a[128];
+    lstrcpynW(a, s, at + 1 < 128 ? at + 1 : 128);
+    gfx_text(x, y, a, c, size, align);
+    gfx_text(x, y + size * 3 / 2, s + at + skip, c, size, align);
+    return 2;
+}
+
 /* -------------------------------------------------------------- ventana */
 
 static void render(void) {
@@ -853,7 +883,8 @@ static void run_events(const wchar_t *p) {
             p += 4;
             for (;;) {
                 int v = read_int(&p, 16);
-                if (D->on_key) D->on_key(0, v, 1);
+                int vk = (int)MapVirtualKeyW((UINT)((v & SCAN_EXTENDED) ? 0xE000 | (v & 0xFF) : v), MAPVK_VSC_TO_VK_EX);
+                if (D->on_key) D->on_key(vk, v, 1);
                 if (*p != L',') break;
                 p++;
             }
