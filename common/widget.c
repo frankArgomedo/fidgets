@@ -14,6 +14,7 @@
 #define UNICODE
 #define _UNICODE
 #include <windows.h>
+#include <wtsapi32.h>
 #include <math.h>
 #include "widget.h"
 
@@ -26,27 +27,35 @@
 #define HK_QUITALL 2
 #define WM_SHOWME (WM_APP + 1)
 
-enum { ID_TOP = 100, ID_DIM, ID_HIDEALL, ID_CLOSE, ID_QUITALL, ID_OPA = 200, ID_CUSTOM = 1000 };
+enum { ID_TOP = 100, ID_DIM, ID_HIDEALL, ID_CLOSE, ID_QUITALL, ID_LANG_AUTO, ID_LANG_ES, ID_LANG_EN,
+       ID_HELP, ID_OPA = 200, ID_CUSTOM = 1000 };
 
 static const WidgetDesc *D;
 static HWND hwnd;
 static HDC memdc, txtdc;
 static uint32_t *px, *txtpx;
-static int PW, PH, S = 1;           /* tamano fisico y escala */
+static int PW, PH, S = 1;           /* tamaño físico y escala */
 static int fps, dirty, hidden, hover, own_hotkeys;
+static int suspended, locked;       /* PC suspendida / sesión bloqueada */
+static int unusable;                /* oculto, suspendido o bloqueado: lo último que se avisó a on_hide */
 static int topmost = 1, opacity = 100, dim = 0;
-static int close_by_user;           /* 1 si el usuario cerro este widget (clic central, menu) */
+static int ui_lang;                 /* ajuste: 0 = automático, o el LANGID primario (10 es, 9 en) */
+static int lang = LANG_ES;          /* idioma en uso */
+static int close_by_user;           /* 1 si el usuario cerró este widget (clic central, menú) */
 static HANDLE timer;
 static int timer_period;            /* ms; 0 = apagado */
 static double last_tick;
 static wchar_t ini_path[MAX_PATH];
-static UINT MSG_HIDEALL, MSG_QUITALL, MSG_REHOOK, MSG_USER;
+static UINT MSG_HIDEALL, MSG_QUITALL, MSG_REHOOK, MSG_USER, MSG_LANG;
 static LARGE_INTEGER qpf;
 static uint32_t rng_state = 2463534242u;
+static int snapshot;                /* modo foto: sin ventana, reloj simulado */
+static double snap_clock = 1000.0;
 
 /* ------------------------------------------------------------------ util */
 
 double now_seconds(void) {
+    if (snapshot) return snap_clock;
     LARGE_INTEGER c;
     QueryPerformanceCounter(&c);
     return (double)c.QuadPart / (double)qpf.QuadPart;
@@ -64,6 +73,33 @@ int rnd_range(int lo, int hi) { return lo + (int)(rnd() % (uint32_t)(hi - lo + 1
 
 int cfg_get_int(const wchar_t *key, int def) {
     return (int)GetPrivateProfileIntW(D->name, key, def, ini_path);
+}
+
+/* borra todas las claves de la sección del widget que empiezan con prefix */
+void cfg_delete_prefix(const wchar_t *prefix) {
+    static wchar_t buf[8192];
+    DWORD n = GetPrivateProfileSectionW(D->name, buf, 8192, ini_path);
+    int len = lstrlenW(prefix);
+    for (wchar_t *p = buf; n && *p; p += lstrlenW(p) + 1) {
+        if (CompareStringOrdinal(p, len, prefix, len, FALSE) != CSTR_EQUAL) continue;
+        wchar_t *eq = p;
+        while (*eq && *eq != L'=') eq++;
+        wchar_t c = *eq;
+        *eq = 0;
+        WritePrivateProfileStringW(D->name, p, NULL, ini_path);
+        *eq = c;
+    }
+}
+
+int cfg_get_range(const wchar_t *key, int def, int min, int max) {
+    int v = cfg_get_int(key, def);
+    return v < min || v > max ? def : v;
+}
+
+int cfg_get_choice(const wchar_t *key, int def, const int *vals, int n) {
+    int v = cfg_get_int(key, def);
+    for (int i = 0; i < n; i++) if (vals[i] == v) return v;
+    return def;
 }
 
 void cfg_set_int(const wchar_t *key, int value) { cfg_set_int_in(D->name, key, value); }
@@ -131,13 +167,88 @@ static void find_ini(void) {
 /* ---------------------------------------------------------------- tema */
 
 static const Theme default_theme = {
-    .text   = RGBA(240, 242, 248, 240),
-    .sub    = RGBA(150, 156, 170, 215),
-    .accent = RGBA(250, 190, 70, 240),
-    .error  = RGBA(235, 80, 80, 240),
-    .extra  = RGBA(160, 55, 60, 230),
+    .text        = RGBA(240, 242, 248, 240),
+    .sub         = RGBA(150, 156, 170, 215),
+    .accent      = RGBA(250, 190, 70, 240),
+    .error       = RGBA(235, 80, 80, 240),
+    .extra       = RGBA(160, 55, 60, 230),
+    .surface     = RGBA(52, 55, 64, 230),
+    .surface_alt = RGBA(55, 75, 135, 225),
+    .line        = RGBA(255, 255, 255, 40),
+    .ok          = RGBA(50, 195, 170, 235),   /* verde azulado: se distingue de error con daltonismo rojo-verde */
+    .ink         = RGBA(16, 18, 24, 230),
 };
 const Theme *theme = &default_theme;
+
+Color color_mix(Color a, Color b, float t) {
+    if (t <= 0) return a;
+    if (t >= 1) return b;
+    int r = (int)(((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t);
+    int g = (int)(((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t);
+    int bl = (int)((a & 255) * (1 - t) + (b & 255) * t);
+    int al = (int)((a >> 24) * (1 - t) + (b >> 24) * t);
+    return RGBA(r, g, bl, al);
+}
+
+Color color_alpha(Color c, int a) {
+    if (a < 0) a = 0;
+    if (a > 255) a = 255;
+    return (c & 0xFFFFFF) | ((Color)a << 24);
+}
+
+/* --------------------------------------------------------------- idiomas */
+
+enum { B_ON_TOP, B_DIM, B_OPACITY, B_LANGUAGE, B_LANG_AUTO, B_HELP, B_HIDE_ALL, B_CLOSE, B_CLOSE_ALL, B_COUNT };
+static const wchar_t *const BASE_TXT[LANG_COUNT][TB_COUNT + B_COUNT] = {
+    [LANG_ES] = {
+        [TB_PAUSED] = L"en pausa · clic para seguir",
+        [TB_NO_KEYBOARD] = L"sin teclado · clic para seguir",
+        [TB_COUNT + B_ON_TOP] = L"Siempre encima",
+        [TB_COUNT + B_DIM] = L"Atenuar sin el mouse",
+        [TB_COUNT + B_OPACITY] = L"Opacidad (%d%%)",
+        [TB_COUNT + B_LANGUAGE] = L"Idioma",
+        [TB_COUNT + B_LANG_AUTO] = L"Automático",
+        [TB_COUNT + B_HELP] = L"Controles",
+        [TB_COUNT + B_HIDE_ALL] = L"Ocultar todos\tCtrl+Alt+B",
+        [TB_COUNT + B_CLOSE] = L"Cerrar\tClic central",
+        [TB_COUNT + B_CLOSE_ALL] = L"Cerrar todos\tCtrl+Alt+Q",
+    },
+    [LANG_EN] = {
+        [TB_PAUSED] = L"paused · click to resume",
+        [TB_NO_KEYBOARD] = L"no keyboard · click to resume",
+        [TB_COUNT + B_ON_TOP] = L"Always on top",
+        [TB_COUNT + B_DIM] = L"Dim when the mouse is away",
+        [TB_COUNT + B_OPACITY] = L"Opacity (%d%%)",
+        [TB_COUNT + B_LANGUAGE] = L"Language",
+        [TB_COUNT + B_LANG_AUTO] = L"Automatic",
+        [TB_COUNT + B_HELP] = L"Controls",
+        [TB_COUNT + B_HIDE_ALL] = L"Hide all\tCtrl+Alt+B",
+        [TB_COUNT + B_CLOSE] = L"Close\tMiddle click",
+        [TB_COUNT + B_CLOSE_ALL] = L"Close all\tCtrl+Alt+Q",
+    },
+};
+
+static const wchar_t *base_txt(int id) {
+    const wchar_t *s = BASE_TXT[lang][id];
+    return s ? s : BASE_TXT[LANG_ES][id];
+}
+const wchar_t *tr_base(int id) { return id >= 0 && id < TB_COUNT ? base_txt(id) : L""; }
+static const wchar_t *menu_txt(int b) { return base_txt(TB_COUNT + b); }
+
+const wchar_t *tr(int id) {
+    if (!D || id <= 0 || id >= D->ntexts) return L"";
+    const wchar_t *s = D->texts[lang] ? D->texts[lang][id] : 0;
+    if (!s) s = D->texts[LANG_ES] ? D->texts[LANG_ES][id] : 0;
+    return s ? s : L"";
+}
+
+int widget_lang(void) { return lang; }
+
+/* ui_lang: 0 = el de Windows (español si Windows está en español; si no, inglés) */
+static void apply_lang(void) {
+    int p = ui_lang ? ui_lang : (int)(GetUserDefaultUILanguage() & 0x3ff);
+    lang = p == LANG_SPANISH ? LANG_ES : LANG_EN;
+}
 
 /* ------------------------------------------------------------------ gfx */
 
@@ -371,8 +482,14 @@ int widget_mouse(int *x, int *y) {
     return p.x >= 0 && p.y >= 0 && p.x < PW && p.y < PH;
 }
 
+int widget_reduce_motion(void) {
+    BOOL anim = TRUE;
+    SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &anim, 0);
+    return !anim;
+}
+
 static void update_timer(void) {
-    int want = (fps > 0 && !hidden) ? 1000 / fps : 0;
+    int want = (fps > 0 && !unusable) ? 1000 / fps : 0;
     if (want == timer_period) return;
     timer_period = want;
     if (!want) { CancelWaitableTimer(timer); return; }
@@ -387,13 +504,22 @@ void widget_set_fps(int f) {
     if (hwnd) update_timer();
 }
 
+/* Avisa a on_hide cuando el widget deja de poder usarse (oculto, PC suspendida o
+ * sesión bloqueada) o vuelve a poder usarse. Para el widget, los tres son lo mismo. */
+static void update_usable(void) {
+    int u = hidden || suspended || locked;
+    if (u == unusable) return;
+    unusable = u;
+    if (hwnd) update_timer();
+    if (D->on_hide) D->on_hide(u);
+    if (!u) { dirty = 1; last_tick = now_seconds(); }
+}
+
 static void set_hidden(int h) {
     if (h == hidden) return;
     hidden = h;
     ShowWindow(hwnd, h ? SW_HIDE : SW_SHOWNOACTIVATE);
-    update_timer();
-    if (D->on_hide) D->on_hide(h);
-    if (!h) dirty = 1;
+    update_usable();
 }
 
 static void try_hotkeys(void) {
@@ -412,45 +538,64 @@ static void save_state(void) {
     cfg_set_int(L"topmost", topmost);
     cfg_set_int(L"opacity", opacity);
     cfg_set_int(L"dim", dim);
+    cfg_set_int(L"ui_lang", ui_lang);
+}
+
+/* agrega una opción con su marca: CHECK_ON = ✓, CHECK_RADIO = • */
+static void add_item(HMENU m, UINT id, const wchar_t *text, int check) {
+    AppendMenuW(m, MF_STRING | (check ? MF_CHECKED : 0), id, text);
+    if (check == CHECK_RADIO) {
+        MENUITEMINFOW mi = { sizeof mi, MIIM_FTYPE };
+        mi.fType = MFT_STRING | MFT_RADIOCHECK;
+        SetMenuItemInfoW(m, id, FALSE, &mi);
+    }
 }
 
 static void show_menu(void) {
-    HMENU m = CreatePopupMenu(), op = CreatePopupMenu();
+    HMENU m = CreatePopupMenu(), op = CreatePopupMenu(), lm = CreatePopupMenu();
     static const int levels[] = { 100, 75, 50, 35, 25, 15 };
     for (int i = 0; i < 6; i++) {
         wchar_t b[8];
         wsprintfW(b, L"%d%%", levels[i]);
-        AppendMenuW(op, MF_STRING | (opacity == levels[i] ? MF_CHECKED : 0), ID_OPA + levels[i], b);
+        add_item(op, ID_OPA + levels[i], b, opacity == levels[i] ? CHECK_RADIO : CHECK_NONE);
     }
     if (D->menu) {
         HMENU stack[4] = { m };
         int depth = 0;
         for (int i = 0; D->menu[i]; i++) {
-            const wchar_t *t = D->menu[i];
-            if (t[0] == L'>' && depth < 3) {
-                HMENU sub = CreatePopupMenu();
-                AppendMenuW(stack[depth], MF_POPUP, (UINT_PTR)sub, t + 1);
-                stack[++depth] = sub;
-            } else if (t[0] == L'<' && !t[1]) {
+            int e = D->menu[i];
+            if (e == MENU_END) {
                 if (depth) depth--;
-            } else if (t[0] == L'-' && !t[1]) {
+            } else if (e == MENU_SEP) {
                 AppendMenuW(stack[depth], MF_SEPARATOR, 0, NULL);
+            } else if ((e & MENU_SUB) && depth < 3) {
+                HMENU sub = CreatePopupMenu();
+                AppendMenuW(stack[depth], MF_POPUP, (UINT_PTR)sub, tr(e & ~MENU_SUB));
+                stack[++depth] = sub;
             } else {
-                AppendMenuW(stack[depth], MF_STRING | (D->menu_checked && D->menu_checked(i) ? MF_CHECKED : 0),
-                            ID_CUSTOM + i, t);
+                add_item(stack[depth], ID_CUSTOM + i, tr(e), D->menu_checked ? D->menu_checked(i) : CHECK_NONE);
             }
         }
         AppendMenuW(m, MF_SEPARATOR, 0, NULL);
     }
-    AppendMenuW(m, MF_STRING | (topmost ? MF_CHECKED : 0), ID_TOP, L"Siempre encima");
-    AppendMenuW(m, MF_STRING | (dim ? MF_CHECKED : 0), ID_DIM, L"Atenuar sin el mouse");
-    wchar_t opl[40];
-    wsprintfW(opl, L"Opacidad (%d%%, rueda del mouse)", opacity);
+    if (D->help && D->help[0]) {     /* «Controles ▸»: líneas grises, solo para leer */
+        HMENU hm = CreatePopupMenu();
+        for (int i = 0; D->help[i]; i++) AppendMenuW(hm, MF_STRING | MF_GRAYED, ID_HELP, tr(D->help[i]));
+        AppendMenuW(m, MF_POPUP, (UINT_PTR)hm, menu_txt(B_HELP));
+    }
+    add_item(m, ID_TOP, menu_txt(B_ON_TOP), topmost);
+    add_item(m, ID_DIM, menu_txt(B_DIM), dim);
+    wchar_t opl[48];
+    wsprintfW(opl, menu_txt(B_OPACITY), opacity);
     AppendMenuW(m, MF_POPUP, (UINT_PTR)op, opl);
+    add_item(lm, ID_LANG_AUTO, menu_txt(B_LANG_AUTO), ui_lang == 0 ? CHECK_RADIO : CHECK_NONE);
+    add_item(lm, ID_LANG_ES, L"Español", ui_lang == LANG_SPANISH ? CHECK_RADIO : CHECK_NONE);
+    add_item(lm, ID_LANG_EN, L"English", ui_lang == LANG_ENGLISH ? CHECK_RADIO : CHECK_NONE);
+    AppendMenuW(m, MF_POPUP, (UINT_PTR)lm, menu_txt(B_LANGUAGE));
     AppendMenuW(m, MF_SEPARATOR, 0, NULL);
-    AppendMenuW(m, MF_STRING, ID_HIDEALL, L"Ocultar todos\tCtrl+Alt+B");
-    AppendMenuW(m, MF_STRING, ID_CLOSE, L"Cerrar\tClic central");
-    AppendMenuW(m, MF_STRING, ID_QUITALL, L"Cerrar todos\tCtrl+Alt+Q");
+    AppendMenuW(m, MF_STRING, ID_HIDEALL, menu_txt(B_HIDE_ALL));
+    AppendMenuW(m, MF_STRING, ID_CLOSE, menu_txt(B_CLOSE));
+    AppendMenuW(m, MF_STRING, ID_QUITALL, menu_txt(B_CLOSE_ALL));
     POINT p;
     GetCursorPos(&p);
     SetForegroundWindow(hwnd);
@@ -471,6 +616,9 @@ static void show_menu(void) {
     } else if (cmd >= ID_OPA && cmd <= ID_OPA + 100) {
         opacity = cmd - ID_OPA;
         dirty = 1;
+    } else if (cmd >= ID_LANG_AUTO && cmd <= ID_LANG_EN) {   /* el idioma cambia en todos los widgets */
+        int v = cmd == ID_LANG_ES ? LANG_SPANISH : cmd == ID_LANG_EN ? LANG_ENGLISH : 0;
+        PostMessageW(HWND_BROADCAST, MSG_LANG, (WPARAM)v, 0);
     } else if (cmd == ID_HIDEALL) {
         PostMessageW(HWND_BROADCAST, MSG_HIDEALL, 1, 0);
     } else if (cmd == ID_CLOSE) {
@@ -553,6 +701,13 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (D->on_message) D->on_message((int)wp, (int)lp);
         return 0;
     }
+    if (msg == MSG_LANG && msg) {
+        ui_lang = (int)wp;
+        cfg_set_int(L"ui_lang", ui_lang);
+        apply_lang();
+        dirty = 1;
+        return 0;
+    }
 
     switch (msg) {
     case WM_HOTKEY:
@@ -578,13 +733,15 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_KILLFOCUS:
         if (D->on_focus) { D->on_focus(msg == WM_SETFOCUS); dirty = 1; }
         return 0;
-    case WM_MOUSEWHEEL: {               /* rueda sobre el widget: opacidad de 5 en 5 */
-        int o = opacity + ((short)HIWORD(wp) > 0 ? 5 : -5);
-        opacity = o < 10 ? 10 : (o > 100 ? 100 : o);
-        dirty = 1;
-        cfg_set_int(L"opacity", opacity);
+    /* La rueda queda libre para el widget; la opacidad solo va en el menú. */
+    case WM_POWERBROADCAST:
+        if (wp == PBT_APMSUSPEND) { suspended = 1; update_usable(); }
+        else if (wp == PBT_APMRESUMEAUTOMATIC || wp == PBT_APMRESUMESUSPEND) { suspended = 0; update_usable(); }
+        return TRUE;
+    case WM_WTSSESSION_CHANGE:
+        if (wp == WTS_SESSION_LOCK) { locked = 1; update_usable(); }
+        else if (wp == WTS_SESSION_UNLOCK) { locked = 0; update_usable(); }
         return 0;
-    }
     case WM_MBUTTONUP:
         close_by_user = 1;
         DestroyWindow(h);
@@ -593,16 +750,19 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         show_menu();
         return 0;
     case WM_KEYDOWN: {
-        /* Esc NO cierra el widget (preferencia del usuario): es facil pulsarlo sin querer */
-        if (D->on_key) D->on_key((int)wp, (int)((lp >> 16) & 0xFF), (lp & (1 << 30)) ? 2 : 1);
+        /* Esc NO cierra el widget (preferencia del usuario): es fácil pulsarlo sin querer */
+        int scan = (int)((lp >> 16) & 0xFF) | ((lp & (1 << 24)) ? SCAN_EXTENDED : 0);
+        if (D->on_key) D->on_key((int)wp, scan, (lp & (1 << 30)) ? 2 : 1);
         return 0;
     }
     case WM_CHAR:
         if (D->on_char) D->on_char((int)wp);
         return 0;
-    case WM_KEYUP:
-        if (D->on_key) D->on_key((int)wp, (int)((lp >> 16) & 0xFF), 0);
+    case WM_KEYUP: {
+        int scan = (int)((lp >> 16) & 0xFF) | ((lp & (1 << 24)) ? SCAN_EXTENDED : 0);
+        if (D->on_key) D->on_key((int)wp, scan, 0);
         return 0;
+    }
     case WM_MOUSEMOVE:
         if (!hover) {
             TRACKMOUSEEVENT t = { sizeof t, TME_LEAVE, h, 0 };
@@ -622,6 +782,7 @@ static LRESULT CALLBACK wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         save_state();
         return 0;
     case WM_DESTROY:
+        WTSUnRegisterSessionNotification(h);
         save_state();
         if (D->on_close) D->on_close(close_by_user);
         if (own_hotkeys) {
@@ -648,20 +809,135 @@ static HDC make_dib(int w, int h, uint32_t **bits) {
     return dc;
 }
 
+/* ------------------------------------------------------------- modo foto
+ * Dibuja sin ventana tras un guion de eventos (FIDGETS_EVENTS, ver widget.h) y
+ * guarda el buffer en FIDGETS_SNAPSHOT. Formato: "BSNP", ancho, alto (int32) y
+ * píxeles BGRA premultiplicados, de arriba a abajo. */
+static int snap_focused;
+
+static void snap_tick(int ms) {
+    for (int t = 0; t < ms; t += 16) {
+        int step = ms - t < 16 ? ms - t : 16;
+        snap_clock += step / 1000.0;
+        if (D->on_tick && fps > 0 && !unusable) D->on_tick((float)step / 1000.0f);
+    }
+}
+
+static void snap_focus(int f) {
+    if (f == snap_focused) return;
+    snap_focused = f;
+    if (D->on_focus) D->on_focus(f);
+}
+
+static int read_int(const wchar_t **p, int base) {
+    int v = 0;
+    for (;; (*p)++) {
+        int c = **p, h = c >= L'0' && c <= L'9' ? c - L'0' :
+                (base == 16 && c >= L'a' && c <= L'f') ? c - L'a' + 10 :
+                (base == 16 && c >= L'A' && c <= L'F') ? c - L'A' + 10 : -1;
+        if (h < 0) return v;
+        v = v * base + h;
+    }
+}
+
+static int starts(const wchar_t *p, const wchar_t *w) {
+    while (*w) if (*p++ != *w++) return 0;
+    return 1;
+}
+
+static void run_events(const wchar_t *p) {
+    while (*p) {
+        while (*p == L' ') p++;
+        if (!*p) break;
+        if (starts(p, L"key:")) {
+            p += 4;
+            for (;;) {
+                int v = read_int(&p, 16);
+                if (D->on_key) D->on_key(0, v, 1);
+                if (*p != L',') break;
+                p++;
+            }
+        } else if (starts(p, L"text:")) {
+            p += 5;
+            snap_focus(1);   /* escribir implica haber clicado el widget */
+            for (; *p && *p != L' '; p++) {
+                int ch = *p;
+                if (ch == L'\\' && p[1]) {
+                    p++;
+                    ch = *p == L's' ? L' ' : *p == L'b' ? 8 : *p == L't' ? 9 : *p == L'n' ? 13 : *p;
+                }
+                if (D->on_char) D->on_char(ch);
+                snap_tick(100);
+            }
+        } else if (starts(p, L"click:")) {
+            p += 6;
+            int x = read_int(&p, 10);
+            if (*p == L',') p++;
+            int y = read_int(&p, 10);
+            snap_focus(1);
+            if (D->on_mouse && D->on_mouse(x, y, MOUSE_DOWN)) D->on_mouse(x, y, MOUSE_UP);
+        } else if (starts(p, L"tick:")) {
+            p += 5;
+            snap_tick(read_int(&p, 10));
+        } else if (starts(p, L"hide")) {
+            p += 4; hidden = 1; update_usable();
+        } else if (starts(p, L"show")) {
+            p += 4; hidden = 0; update_usable();
+        } else if (starts(p, L"focus")) {
+            p += 5; snap_focus(1);
+        } else if (starts(p, L"blur")) {
+            p += 4; snap_focus(0);
+        } else if (starts(p, L"lang:")) {
+            p += 5;
+            ui_lang = starts(p, L"en") ? LANG_ENGLISH : LANG_SPANISH;
+            apply_lang();
+            while (*p && *p != L' ') p++;
+        } else {
+            while (*p && *p != L' ') p++;   /* evento desconocido: se ignora */
+        }
+    }
+}
+
+static int run_snapshot(const wchar_t *file) {
+    static wchar_t ev[4096];
+    fps = D->fps;
+    if (D->on_init) D->on_init();
+    if (GetEnvironmentVariableW(L"FIDGETS_EVENTS", ev, 4096) > 0) run_events(ev);
+    if (D->on_draw) D->on_draw();
+    HANDLE f = CreateFileW(file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+    if (f == INVALID_HANDLE_VALUE) return 1;
+    int32_t hdr[3] = { 0x504E5342, PW, PH }; /* "BSNP" */
+    DWORD wr;
+    WriteFile(f, hdr, sizeof hdr, &wr, NULL);
+    WriteFile(f, px, (DWORD)(PW * PH * 4), &wr, NULL);
+    CloseHandle(f);
+    return 0;
+}
+
+/* ----------------------------------------------------------------- inicio */
+
+/* Una sola instancia por name: un mutex con nombre (sin la carrera de buscar la
+ * ventana). Si ya existe, se le pide a esa que se muestre y se sale. */
+static int already_running(void) {
+    wchar_t mx[96];
+    wsprintfW(mx, L"Local\\fidgets.%s", D->name);
+    CreateMutexW(NULL, FALSE, mx);   /* el sistema lo libera al salir del proceso */
+    if (GetLastError() != ERROR_ALREADY_EXISTS) return 0;
+    for (int i = 0; i < 40; i++) {   /* la otra puede estar creando su ventana todavía */
+        HWND prev = FindWindowW(CLASS_NAME, D->name);
+        if (prev) { PostMessageW(prev, WM_SHOWME, 0, 0); break; }
+        Sleep(50);
+    }
+    return 1;
+}
+
 int widget_run(const WidgetDesc *d) {
     D = d;
     QueryPerformanceFrequency(&qpf);
 
-    /* Modo foto (para pruebas): FIDGETS_SNAPSHOT=archivo dibuja una vez SIN crear
-     * ventana y guarda el buffer. FIDGETS_KEYS="17,24,..." (scan codes en hex) se
-     * envian antes a on_key. Formato: "BSNP", ancho, alto (int32) y pixeles BGRA
-     * premultiplicados, de arriba a abajo. */
     wchar_t snap[MAX_PATH];
-    int snapshot = GetEnvironmentVariableW(L"FIDGETS_SNAPSHOT", snap, MAX_PATH) > 0;
-
-    /* Una sola instancia por widget: si ya existe, se muestra y salimos. */
-    HWND prev = snapshot ? NULL : FindWindowW(CLASS_NAME, d->name);
-    if (prev) { PostMessageW(prev, WM_SHOWME, 0, 0); return 0; }
+    snapshot = GetEnvironmentVariableW(L"FIDGETS_SNAPSHOT", snap, MAX_PATH) > 0;
+    if (!snapshot && already_running()) return 0;
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
     S = ((int)GetDpiForSystem() + 48) / 96;
@@ -671,22 +947,31 @@ int widget_run(const WidgetDesc *d) {
 
     find_ini();
 
-    LARGE_INTEGER seed;
-    QueryPerformanceCounter(&seed);
-    rng_state ^= (uint32_t)seed.QuadPart ^ (GetCurrentProcessId() << 16);
+    wchar_t sd[16];
+    if (GetEnvironmentVariableW(L"FIDGETS_SEED", sd, 16) > 0) {
+        const wchar_t *p = sd;
+        rng_state = (uint32_t)read_int(&p, 10);
+    } else {
+        LARGE_INTEGER seed;
+        QueryPerformanceCounter(&seed);
+        rng_state ^= (uint32_t)seed.QuadPart ^ (GetCurrentProcessId() << 16);
+    }
     if (!rng_state) rng_state = 1;
 
     MSG_HIDEALL = RegisterWindowMessageW(L"fidgets.hideall");
     MSG_QUITALL = RegisterWindowMessageW(L"fidgets.quitall");
     MSG_REHOOK = RegisterWindowMessageW(L"fidgets.rehook");
     MSG_USER = RegisterWindowMessageW(L"fidgets.user");
+    MSG_LANG = RegisterWindowMessageW(L"fidgets.lang");
 
-    topmost = cfg_get_int(L"topmost", 1);
-    opacity = cfg_get_int(L"opacity", 100);
-    dim = cfg_get_int(L"dim", 0);
-    if (opacity < 10 || opacity > 100) opacity = 100;
+    static const int LANGS[] = { 0, LANG_SPANISH, LANG_ENGLISH };
+    topmost = cfg_get_range(L"topmost", 1, 0, 1);
+    opacity = cfg_get_range(L"opacity", 100, 10, 100);
+    dim = cfg_get_range(L"dim", 0, 0, 1);
+    ui_lang = snapshot ? LANG_SPANISH : cfg_get_choice(L"ui_lang", 0, LANGS, 3);   /* fotos: español salvo lang: */
+    apply_lang();
 
-    /* Posicion: la guardada, si sigue cayendo en algun monitor; si no, abajo a la derecha. */
+    /* Posición: la guardada, si sigue cayendo en algún monitor; si no, abajo a la derecha. */
     RECT wa;
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     int x = cfg_get_int(L"x", wa.right - PW - 24), y = cfg_get_int(L"y", wa.bottom - PH - 24);
@@ -698,51 +983,7 @@ int widget_run(const WidgetDesc *d) {
     SetTextColor(txtdc, RGB(255, 255, 255));
     SetBkMode(txtdc, TRANSPARENT);
 
-    if (snapshot) {
-        wchar_t keys[512];
-        fps = d->fps;
-        if (d->on_init) d->on_init();
-        if (d->on_key && GetEnvironmentVariableW(L"FIDGETS_KEYS", keys, 512) > 0) {
-            int v = 0, have = 0;
-            for (wchar_t *p = keys;; p++) {
-                int h = *p >= L'0' && *p <= L'9' ? *p - L'0' : (*p >= L'a' && *p <= L'f' ? *p - L'a' + 10 :
-                        (*p >= L'A' && *p <= L'F' ? *p - L'A' + 10 : -1));
-                if (h >= 0) { v = v * 16 + h; have = 1; continue; }
-                if (have) { d->on_key(0, v, 1); v = 0; have = 0; }
-                if (!*p) break;
-            }
-        }
-        wchar_t text[1024];
-        if (d->on_char && GetEnvironmentVariableW(L"FIDGETS_TEXT", text, 1024) > 0) {
-            if (d->on_focus) d->on_focus(1);
-            for (wchar_t *p = text; *p; p++) {
-                int ch = *p;
-                if (ch == L'\\' && p[1]) {
-                    p++;
-                    ch = *p == L'b' ? 8 : *p == L't' ? 9 : *p == L'n' ? 13 : *p;
-                }
-                d->on_char(ch);
-            }
-        }
-        /* FIDGETS_TICK_MS: tiempo simulado tras las teclas (por defecto 1000 ms), en pasos de 16 ms */
-        int tick_ms = 1000;
-        wchar_t tk[16];
-        if (GetEnvironmentVariableW(L"FIDGETS_TICK_MS", tk, 16) > 0) {
-            tick_ms = 0;
-            for (wchar_t *p = tk; *p >= L'0' && *p <= L'9'; p++) tick_ms = tick_ms * 10 + (*p - L'0');
-        }
-        for (int t = 0; t < tick_ms && d->on_tick && fps > 0; t += 16)
-            d->on_tick((float)(tick_ms - t < 16 ? tick_ms - t : 16) / 1000.0f);
-        if (d->on_draw) d->on_draw();
-        HANDLE f = CreateFileW(snap, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
-        if (f == INVALID_HANDLE_VALUE) return 1;
-        int32_t hdr[3] = { 0x504E5342, PW, PH }; /* "BSNP" */
-        DWORD wr2;
-        WriteFile(f, hdr, sizeof hdr, &wr2, NULL);
-        WriteFile(f, px, (DWORD)(PW * PH * 4), &wr2, NULL);
-        CloseHandle(f);
-        return 0;
-    }
+    if (snapshot) return run_snapshot(snap);
 
     HINSTANCE inst = GetModuleHandleW(NULL);
     WNDCLASSEXW wc = { sizeof wc };
@@ -755,6 +996,7 @@ int widget_run(const WidgetDesc *d) {
     hwnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOOLWINDOW | (topmost ? WS_EX_TOPMOST : 0),
                            CLASS_NAME, d->name, WS_POPUP, x, y, PW, PH, NULL, NULL, inst, NULL);
     if (!hwnd) return 1;
+    WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);   /* bloqueo de sesión */
 
     timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     if (!timer) timer = CreateWaitableTimerW(NULL, FALSE, NULL);

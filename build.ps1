@@ -20,7 +20,7 @@ $flags = @(
     "-Wl,--subsystem,windows",
     "-I", (Join-Path $root "common")
 )
-$libs = @("-luser32", "-lgdi32")
+$libs = @("-luser32", "-lgdi32", "-lwtsapi32")
 
 $failed = 0
 Get-ChildItem (Join-Path $root "widgets") -Directory | Where-Object { -not $Only -or $_.Name -eq $Only } | ForEach-Object {

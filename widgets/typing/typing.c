@@ -245,7 +245,7 @@ static void pb_key(wchar_t *k);
 static void restart(void) {
     wchar_t k[48];
     pb_key(k);
-    cur_pb = cfg_get_int(k, 0);
+    cur_pb = cfg_get_range(k, 0, 0, 1000000);
     state = IDLE;
     nwords = cur = keys_ok = keys_bad = 0;
     prev_base = -1;
@@ -471,29 +471,99 @@ static void draw(void) {
 
 /* ------------------------------------------------------------ menu y arranque */
 
-static const wchar_t *const MENU[] = {
-    L">Modo",                                                                     /* 0 */
-    L"Tiempo 15 s", L"Tiempo 30 s", L"Tiempo 60 s", L"Tiempo 120 s", L"-",        /* 1-5 */
-    L"10 palabras", L"25 palabras", L"50 palabras", L"100 palabras", L"<",        /* 6-10 */
-    L">Idioma",                                                                   /* 11 */
-    L"Español", L"Inglés", L"-",                                                  /* 12-14 */
-    L"200 palabras más comunes", L"1000 palabras más comunes", L"<",              /* 15-17 */
-    L"Puntuación", L"Números", L"Sin tildes",                                     /* 18-20 */
-    L">Dificultad",                                                               /* 21 */
-    L"Normal", L"Experto: falla si dejas una palabra mal", L"Maestro: falla con el primer error", L"<", /* 22-25 */
-    0,
+/* Textos de la interfaz (ver «Idiomas y textos» en CLAUDE.md). */
+enum {
+    T_NONE, T_TITLE, T_MODE, T_TIME_15, T_TIME_30, T_TIME_60, T_TIME_120,
+    T_WORDS_10, T_WORDS_25, T_WORDS_50, T_WORDS_100,
+    T_PUNCT, T_NUMS, T_NO_ACCENTS, T_WORDLIST, T_SPANISH, T_ENGLISH, T_LIST_200, T_LIST_1000,
+    T_DIFF, T_DIFF_0, T_DIFF_1, T_DIFF_2, T_CLEAR, T_CLEAR_YES,
+    T_H_CLICK, T_H_SPACE, T_H_BACK, T_H_CTRL_BACK, T_H_TAB, T_H_ESC, T_COUNT
+};
+static const wchar_t *const TXT_ES[T_COUNT] = {
+    [T_TITLE] = L"Teclear",
+    [T_MODE] = L"Modo",
+    [T_TIME_15] = L"Tiempo: 15 s", [T_TIME_30] = L"Tiempo: 30 s",
+    [T_TIME_60] = L"Tiempo: 60 s", [T_TIME_120] = L"Tiempo: 120 s",
+    [T_WORDS_10] = L"Palabras: 10", [T_WORDS_25] = L"Palabras: 25",
+    [T_WORDS_50] = L"Palabras: 50", [T_WORDS_100] = L"Palabras: 100",
+    [T_PUNCT] = L"Puntuación", [T_NUMS] = L"Números", [T_NO_ACCENTS] = L"Sin tildes",
+    [T_WORDLIST] = L"Palabras",
+    [T_SPANISH] = L"En español", [T_ENGLISH] = L"En inglés",
+    [T_LIST_200] = L"Las 200 más comunes", [T_LIST_1000] = L"Las 1000 más comunes",
+    [T_DIFF] = L"Dificultad",
+    [T_DIFF_0] = L"Normal",
+    [T_DIFF_1] = L"Experto: falla si dejas una palabra mal",
+    [T_DIFF_2] = L"Maestro: falla con el primer error",
+    [T_CLEAR] = L"Borrar récords", [T_CLEAR_YES] = L"Sí, borrar todos",
+    [T_H_CLICK] = L"Clic · darle el teclado",
+    [T_H_SPACE] = L"Espacio · siguiente palabra",
+    [T_H_BACK] = L"Retroceso · corregir",
+    [T_H_CTRL_BACK] = L"Ctrl+Retroceso · borrar la palabra",
+    [T_H_TAB] = L"Tab · palabras nuevas",
+    [T_H_ESC] = L"Esc · cancelar el test",
+};
+static const wchar_t *const TXT_EN[T_COUNT] = {
+    [T_TITLE] = L"Typing",
+    [T_MODE] = L"Mode",
+    [T_TIME_15] = L"Time: 15 s", [T_TIME_30] = L"Time: 30 s",
+    [T_TIME_60] = L"Time: 60 s", [T_TIME_120] = L"Time: 120 s",
+    [T_WORDS_10] = L"Words: 10", [T_WORDS_25] = L"Words: 25",
+    [T_WORDS_50] = L"Words: 50", [T_WORDS_100] = L"Words: 100",
+    [T_PUNCT] = L"Punctuation", [T_NUMS] = L"Numbers", [T_NO_ACCENTS] = L"No accents",
+    [T_WORDLIST] = L"Words",
+    [T_SPANISH] = L"In Spanish", [T_ENGLISH] = L"In English",
+    [T_LIST_200] = L"Top 200", [T_LIST_1000] = L"Top 1000",
+    [T_DIFF] = L"Difficulty",
+    [T_DIFF_0] = L"Normal",
+    [T_DIFF_1] = L"Expert: fail if you leave a word wrong",
+    [T_DIFF_2] = L"Master: fail on the first mistake",
+    [T_CLEAR] = L"Clear records", [T_CLEAR_YES] = L"Yes, clear them all",
+    [T_H_CLICK] = L"Click · give it the keyboard",
+    [T_H_SPACE] = L"Space · next word",
+    [T_H_BACK] = L"Backspace · correct",
+    [T_H_CTRL_BACK] = L"Ctrl+Backspace · delete the word",
+    [T_H_TAB] = L"Tab · new words",
+    [T_H_ESC] = L"Esc · cancel the test",
 };
 
+static const int LISTS[2] = { 200, 1000 };
+enum {
+    M_MODE, M_TIME_15, M_TIME_30, M_TIME_60, M_TIME_120, M_MODE_SEP,
+    M_WORDS_10, M_WORDS_25, M_WORDS_50, M_WORDS_100, M_MODE_END,
+    M_PUNCT, M_NUMS, M_NO_ACCENTS,
+    M_WORDLIST, M_SPANISH, M_ENGLISH, M_LIST_SEP, M_LIST_200, M_LIST_1000, M_WORDLIST_END,
+    M_DIFF, M_DIFF_0, M_DIFF_1, M_DIFF_2, M_DIFF_END,
+    M_SEP, M_CLEAR, M_CLEAR_YES, M_CLEAR_END, M_COUNT
+};
+static const int MENU[M_COUNT + 1] = {
+    [M_MODE] = T_MODE | MENU_SUB,
+    [M_TIME_15] = T_TIME_15, [M_TIME_30] = T_TIME_30, [M_TIME_60] = T_TIME_60, [M_TIME_120] = T_TIME_120,
+    [M_MODE_SEP] = MENU_SEP,
+    [M_WORDS_10] = T_WORDS_10, [M_WORDS_25] = T_WORDS_25, [M_WORDS_50] = T_WORDS_50, [M_WORDS_100] = T_WORDS_100,
+    [M_MODE_END] = MENU_END,
+    [M_PUNCT] = T_PUNCT, [M_NUMS] = T_NUMS, [M_NO_ACCENTS] = T_NO_ACCENTS,
+    [M_WORDLIST] = T_WORDLIST | MENU_SUB,
+    [M_SPANISH] = T_SPANISH, [M_ENGLISH] = T_ENGLISH, [M_LIST_SEP] = MENU_SEP,
+    [M_LIST_200] = T_LIST_200, [M_LIST_1000] = T_LIST_1000, [M_WORDLIST_END] = MENU_END,
+    [M_DIFF] = T_DIFF | MENU_SUB,
+    [M_DIFF_0] = T_DIFF_0, [M_DIFF_1] = T_DIFF_1, [M_DIFF_2] = T_DIFF_2, [M_DIFF_END] = MENU_END,
+    [M_SEP] = MENU_SEP,
+    [M_CLEAR] = T_CLEAR | MENU_SUB, [M_CLEAR_YES] = T_CLEAR_YES, [M_CLEAR_END] = MENU_END,
+};
+static const int HELP[] = { T_H_CLICK, T_H_SPACE, T_H_BACK, T_H_CTRL_BACK, T_H_TAB, T_H_ESC, 0 };
+
+static int radio(int on) { return on ? CHECK_RADIO : CHECK_NONE; }
+
 static int menu_checked(int i) {
-    if (i >= 1 && i <= 4) return mode == MODE_TIME && time_i == i - 1;
-    if (i >= 6 && i <= 9) return mode == MODE_WORDS && count_i == i - 6;
-    if (i == 12 || i == 13) return lang == i - 12;
-    if (i == 15 || i == 16) return big == i - 15;
-    if (i == 18) return punct;
-    if (i == 19) return nums;
-    if (i == 20) return lazy;
-    if (i >= 22 && i <= 24) return diff == i - 22;
-    return 0;
+    if (i >= M_TIME_15 && i <= M_TIME_120) return radio(mode == MODE_TIME && time_i == i - M_TIME_15);
+    if (i >= M_WORDS_10 && i <= M_WORDS_100) return radio(mode == MODE_WORDS && count_i == i - M_WORDS_10);
+    if (i == M_SPANISH || i == M_ENGLISH) return radio(lang == i - M_SPANISH);
+    if (i == M_LIST_200 || i == M_LIST_1000) return radio(big == i - M_LIST_200);
+    if (i >= M_DIFF_0 && i <= M_DIFF_2) return radio(diff == i - M_DIFF_0);
+    if (i == M_PUNCT) return punct;
+    if (i == M_NUMS) return nums;
+    if (i == M_NO_ACCENTS) return lazy;
+    return CHECK_NONE;
 }
 
 /* Se guarda el valor real (segundos, palabras, tamano de la lista), no la posicion
@@ -534,26 +604,27 @@ static void migrate_cfg(void) {
 
 static void load_cfg(void) {
     migrate_cfg();
-    mode = clampi(cfg_get_int(L"mode", MODE_TIME), 0, 1);
-    time_i = index_of(TIMES, 4, cfg_get_int(L"time", 30), 1);
-    count_i = index_of(COUNTS, 4, cfg_get_int(L"words", 25), 1);
-    lang = clampi(cfg_get_int(L"lang", 0), 0, 1);
-    big = cfg_get_int(L"list", 200) == 1000;
-    punct = cfg_get_int(L"punctuation", 0) != 0;
-    nums = cfg_get_int(L"numbers", 0) != 0;
-    lazy = cfg_get_int(L"no_accents", 0) != 0;
-    diff = clampi(cfg_get_int(L"difficulty", 0), 0, 2);
+    mode = cfg_get_range(L"mode", MODE_TIME, 0, 1);
+    time_i = index_of(TIMES, 4, cfg_get_choice(L"time", 30, TIMES, 4), 1);
+    count_i = index_of(COUNTS, 4, cfg_get_choice(L"words", 25, COUNTS, 4), 1);
+    lang = cfg_get_range(L"lang", 0, 0, 1);
+    big = cfg_get_choice(L"list", 200, LISTS, 2) == 1000;
+    punct = cfg_get_range(L"punctuation", 0, 0, 1);
+    nums = cfg_get_range(L"numbers", 0, 0, 1);
+    lazy = cfg_get_range(L"no_accents", 0, 0, 1);
+    diff = cfg_get_range(L"difficulty", 0, 0, 2);
 }
 
 static void on_menu(int i) {
-    if (i >= 1 && i <= 4) { mode = MODE_TIME; time_i = i - 1; }
-    else if (i >= 6 && i <= 9) { mode = MODE_WORDS; count_i = i - 6; }
-    else if (i == 12 || i == 13) lang = i - 12;
-    else if (i == 15 || i == 16) big = i - 15;
-    else if (i == 18) punct = !punct;
-    else if (i == 19) nums = !nums;
-    else if (i == 20) lazy = !lazy;
-    else if (i >= 22 && i <= 24) diff = i - 22;
+    if (i >= M_TIME_15 && i <= M_TIME_120) { mode = MODE_TIME; time_i = i - M_TIME_15; }
+    else if (i >= M_WORDS_10 && i <= M_WORDS_100) { mode = MODE_WORDS; count_i = i - M_WORDS_10; }
+    else if (i == M_SPANISH || i == M_ENGLISH) lang = i - M_SPANISH;
+    else if (i == M_LIST_200 || i == M_LIST_1000) big = i - M_LIST_200;
+    else if (i == M_PUNCT) punct = !punct;
+    else if (i == M_NUMS) nums = !nums;
+    else if (i == M_NO_ACCENTS) lazy = !lazy;
+    else if (i >= M_DIFF_0 && i <= M_DIFF_2) diff = i - M_DIFF_0;
+    else if (i == M_CLEAR_YES) { cfg_delete_prefix(L"pb_"); restart(); return; }
     else return;
     save_cfg();
     restart();
@@ -575,7 +646,8 @@ int main(void) {
         .name = L"typing", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw, .on_char = on_char,
         .on_hide = hide, .on_focus = focus,
-        .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu,
+        .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
+        .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu, .help = HELP,
         .legacy_ini = L"teclear",
     };
     return widget_run(&d);

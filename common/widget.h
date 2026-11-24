@@ -1,33 +1,43 @@
 /*
- * widget.h - base comun para los widgets de "fidgets".
+ * widget.h - base común para los widgets de "fidgets". Reglas: ver CLAUDE.md.
  *
  * Cada widget es un .exe diminuto: ventana sin bordes, con transparencia por
- * pixel, que se puede arrastrar, fijar encima de todo y ocultar/cerrar rapido.
+ * píxel, que se puede arrastrar, fijar encima de todo y ocultar/cerrar rápido.
  *
- * Uso minimo:
+ * Uso mínimo:
  *
  *   #include "widget.h"
- *   static void draw(void) { gfx_clear(RGBA(20,20,20,200)); gfx_text(...); }
+ *   enum { T_NONE, T_HELLO, T_COUNT };
+ *   static const wchar_t *const TXT_ES[T_COUNT] = { [T_HELLO] = L"hola" };
+ *   static const wchar_t *const TXT_EN[T_COUNT] = { [T_HELLO] = L"hello" };
+ *   static void draw(void) { gfx_clear_hit(); gfx_text(8, 8, tr(T_HELLO), theme->text, 14, TEXT_SHADOW); }
  *   int main(void) {
- *       WidgetDesc d = { .name = L"demo", .w = 160, .h = 100, .on_draw = draw };
+ *       WidgetDesc d = { .name = L"demo", .w = 160, .h = 120, .on_draw = draw,
+ *                        .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT };
  *       return widget_run(&d);
  *   }
  *
- * Coordenadas: siempre en pixeles LOGICOS (96 dpi). La base escala sola.
+ * Coordenadas: siempre en píxeles LÓGICOS (96 dpi). La base escala sola.
  * Colores: RGBA(r,g,b,a) normal; la base los premultiplica internamente.
  *
- * Atajos comunes (los da la base, no hay que programarlos):
+ * Lo que da la base (no hay que programarlo):
  *   Arrastrar con clic izquierdo  -> mover (si el widget no consume el clic)
  *   Ctrl + arrastrar              -> mover siempre
- *   (al mover hay iman: se pega a los bordes y a otros widgets, sin separacion; Shift lo evita)
- *   Clic derecho                  -> menu (encima de todo, opacidad, ocultar, cerrar)
+ *   (al mover hay imán: se pega a los bordes y a otros widgets, sin separación; Shift lo evita)
+ *   Clic derecho                  -> menú (controles, encima de todo, opacidad, idioma, ocultar, cerrar)
  *   Clic central                  -> cerrar este widget (Esc NO cierra: queda libre para el widget)
  *   Ctrl+Alt+B                    -> ocultar / mostrar TODOS los widgets
  *   Ctrl+Alt+Q                    -> cerrar TODOS los widgets
+ *   Una sola instancia por name; on_hide también al suspender la PC o bloquear la sesión.
  *
- * Pruebas sin ventana: FIDGETS_SNAPSHOT=archivo (dibuja una vez y sale), con
- * FIDGETS_KEYS (scan codes hex), FIDGETS_TEXT (texto para on_char; "\b" = retroceso,
- * "\t" = Tab, "\n" = Enter) y FIDGETS_TICK_MS (tiempo simulado).
+ * Pruebas sin ventana (modo foto): FIDGETS_SNAPSHOT=archivo dibuja una vez y sale.
+ * FIDGETS_EVENTS es un guion de eventos en orden, separados por espacios:
+ *   key:17,24   scan codes en hex (pulsar)        text:hola\sque   texto para on_char
+ *   click:80,68 clic (bajar y subir) en x,y       tick:500         ms simulados
+ *   hide / show / focus / blur                    lang:es | lang:en
+ * En text: \s espacio, \b retroceso, \t Tab, \n Enter; cada carácter avanza 100 ms
+ * el reloj (now_seconds usa un reloj simulado en este modo) y da el foco si no lo
+ * tenía. FIDGETS_SEED=n fija el azar.
  */
 #ifndef FIDGETS_WIDGET_H
 #define FIDGETS_WIDGET_H
@@ -39,56 +49,96 @@ typedef uint32_t Color; /* 0xAARRGGBB, sin premultiplicar */
 
 enum { MOUSE_DOWN = 1, MOUSE_UP = 2 };
 enum { ALIGN_LEFT = 0, ALIGN_CENTER = 1, ALIGN_RIGHT = 2 };
-#define TEXT_SHADOW 4  /* combinar con la alineacion: sombra oscura de 1 px para fondos claros */
+#define TEXT_SHADOW 4  /* combinar con la alineación: sombra oscura de 1 px para fondos claros */
 #define TEXT_MONO 8    /* combinar: fuente monoespaciada (Consolas) en vez de Segoe UI */
 
-/* Margen OBLIGATORIO entre el borde del widget y su contenido visible. El iman
- * pega los widgets sin separacion, asi que este margen es el que los separa. */
+/* Margen OBLIGATORIO entre el borde del widget y su contenido visible. El imán
+ * pega los widgets sin separación, así que este margen es el que los separa. */
 #define MARGIN 6
 
-/* Paleta comun: todos los widgets usan estos colores para verse coherentes.
- * (Base para temas futuros: cambiar la paleta cambia todos los widgets.) */
+/* Fps mientras algo se mueve: nunca un número suelto en widget_set_fps (salvo 0). */
+#define FPS_MOVE 45      /* movimiento que la vista sigue (giros, deslizamientos) */
+#define FPS_EFFECT 30    /* efectos: cambio de tamaño o color, destellos */
+#define FPS_CLOCK 20     /* cronómetro con centésimas corriendo */
+#define FPS_COUNTER 10   /* contadores en segundos (cada número sale <= 100 ms tarde) */
+
+/* Teclas extendidas (flechas, Insert, Supr, Inicio, Fin, RePág/AvPág, Enter numérico,
+ * Ctrl y Alt derechos): on_key recibe el scan code con este bit sumado. */
+#define SCAN_EXTENDED 0x100
+
+/* Paleta común: la interfaz usa solo estos colores (base para temas futuros).
+ * Los colores "del juego" (p.ej. las caras del cubo) van como constantes del widget. */
 typedef struct Theme {
-    Color text;     /* texto principal */
-    Color sub;      /* texto secundario / pendiente */
-    Color accent;   /* acento: cursor, cuenta regresiva, avisos */
-    Color error;    /* errores */
-    Color extra;    /* errores secundarios (p.ej. letras de mas) */
+    Color text;        /* texto principal */
+    Color sub;         /* texto secundario / pendiente */
+    Color accent;      /* acento: cursor, cuenta regresiva, récord, avisos */
+    Color error;       /* errores */
+    Color extra;       /* errores secundarios (p.ej. letras de más) */
+    Color surface;     /* relleno de teclas y controles */
+    Color surface_alt; /* segunda categoría de control (p.ej. tecla de rotación) */
+    Color line;        /* separadores y bordes (decorativo) */
+    Color ok;          /* acierto, éxito, «jugar» */
+    Color ink;         /* ícono o texto encima de un relleno de color */
 } Theme;
 extern const Theme *theme;
+Color color_mix(Color a, Color b, float t);  /* t = 0 -> a, 1 -> b (incluye el alfa) */
+Color color_alpha(Color c, int a);           /* el mismo color con otro alfa (0-255) */
+
+/* Idiomas de la interfaz. Cada widget da una tabla de textos por idioma, indexada por
+ * sus ids T_… (el 0 queda libre: T_NONE). Si a un idioma le falta un texto, se usa el
+ * español. */
+enum { LANG_ES, LANG_EN, LANG_COUNT };
+const wchar_t *tr(int id);       /* texto del widget en el idioma actual */
+int widget_lang(void);           /* LANG_ES / LANG_EN */
+/* textos comunes de la base, para avisos que todos los widgets muestran igual */
+enum { TB_PAUSED, TB_NO_KEYBOARD, TB_COUNT };
+const wchar_t *tr_base(int id);
+
+/* Menú propio: arreglo de ids de texto, terminado en 0. Con | MENU_SUB la entrada
+ * abre un submenú con ese título; MENU_END lo cierra; MENU_SEP es un separador.
+ * Usar inicializadores designados: [M_INSPECTION] = T_INSPECTION, … */
+#define MENU_SUB 0x10000
+#define MENU_END (-1)
+#define MENU_SEP (-2)
+/* menu_checked: 0 nada, 1 = ✓ (se activa y desactiva), 2 = • (una de varias) */
+enum { CHECK_NONE, CHECK_ON, CHECK_RADIO };
 
 typedef struct WidgetDesc {
-    const wchar_t *name;  /* identificador unico: seccion del .ini y mutex */
-    int w, h;             /* tamano logico: multiplos de 40 (cuadricula comun), max ~320x320 */
+    const wchar_t *name;  /* nombre propio (inglés): .exe, sección del .ini, mutex */
+    int w, h;             /* tamaño lógico: múltiplos de 40, de 80 a 320 */
     int fps;              /* 0 = solo redibuja cuando se pide (CPU ~0%) */
 
     void (*on_init)(void);
-    void (*on_tick)(float dt);     /* solo si fps > 0 y la ventana es visible */
+    void (*on_tick)(float dt);     /* solo si fps > 0 y el widget se puede usar */
     void (*on_draw)(void);         /* dibujar con gfx_* */
-    /* vk = tecla virtual (depende del idioma del teclado), scan = codigo fisico
-     * (misma posicion en cualquier distribucion), down: 1 pulsada, 2 autorepeticion,
-     * 0 soltada. Devuelve 1 si la consumio. */
+    /* vk = tecla virtual (depende del idioma del teclado), scan = código físico
+     * (misma posición en cualquier distribución; + SCAN_EXTENDED si es extendida),
+     * down: 1 pulsada, 2 autorrepetición, 0 soltada. Devuelve 1 si la consumió. */
     int  (*on_key)(int vk, int scan, int down);
-    /* caracter ya compuesto segun el teclado del usuario (WM_CHAR: tildes, n, mayusculas;
-     * tambien 8 = retroceso, 9 = Tab, 13 = Enter, 127 = Ctrl+retroceso). Se llama despues
-     * de on_key. Devuelve 1 si lo consumio. */
+    /* carácter ya compuesto según el teclado del usuario (WM_CHAR: tildes, ñ, mayúsculas;
+     * también 8 = retroceso, 9 = Tab, 13 = Enter, 127 = Ctrl+retroceso). Se llama después
+     * de on_key. Devuelve 1 si lo consumió. */
     int  (*on_char)(int ch);
-    /* devuelve 1 si consumio el clic; 0 deja que la base arrastre la ventana */
+    /* devuelve 1 si consumió el clic; 0 deja que la base arrastre la ventana */
     int  (*on_mouse)(int x, int y, int ev);
-    void (*on_hide)(int hidden);   /* aviso al ocultar/mostrar (p.ej. pausar) */
-    void (*on_focus)(int focused); /* el widget gano/perdio el teclado */
+    /* 1 = el widget no se puede usar (oculto, PC suspendida o sesión bloqueada);
+     * 0 = vuelve a poder usarse. Ver «Ciclo de vida» en CLAUDE.md. */
+    void (*on_hide)(int hidden);
+    void (*on_focus)(int focused); /* el widget ganó/perdió el teclado */
     void (*on_message)(int code, int value); /* mensaje de otro widget (widget_post) */
-    void (*on_close)(int by_user);   /* al cerrarse; by_user = 1 si lo cerro el usuario a mano */
+    void (*on_close)(int by_user);   /* al cerrarse; by_user = 1 si lo cerró el usuario a mano */
 
-    /* Opciones propias en el menu del clic derecho (lista terminada en NULL). */
-    /* Entradas especiales: L">Titulo" abre un submenu, L"<" lo cierra, L"-" separador.
-     * on_menu / menu_checked reciben el indice de la entrada dentro del arreglo. */
-    const wchar_t *const *menu;
-    int  (*menu_checked)(int i);   /* 1 = mostrar marca; puede ser NULL */
+    /* textos de la interfaz: texts[LANG_ES] obligatoria; ntexts = cantidad de ids */
+    const wchar_t *const *texts[LANG_COUNT];
+    int ntexts;
+
+    const int *menu;               /* ver MENU_SUB; on_menu / menu_checked reciben el índice */
+    int  (*menu_checked)(int i);   /* CHECK_…; puede ser NULL */
     void (*on_menu)(int i);
+    const int *help;               /* «Controles ▸»: ids de texto, terminado en 0 */
 
-    /* TEMPORAL (quitar antes de publicar): de donde migrar los ajustes del nombre
-     * provisional "bored": %APPDATA%\bored\<legacy_ini>.ini, seccion legacy_section
+    /* TEMPORAL (quitar antes de publicar): de dónde migrar los ajustes del nombre
+     * provisional "bored": %APPDATA%\bored\<legacy_ini>.ini, sección legacy_section
      * (NULL = la de nombre legacy_ini, el nombre viejo del widget). */
     const wchar_t *legacy_ini;
     const wchar_t *legacy_section;
@@ -96,43 +146,50 @@ typedef struct WidgetDesc {
 
 int  widget_run(const WidgetDesc *d);
 void widget_redraw(void);          /* pide un redibujado */
-void widget_set_fps(int fps);      /* 0 detiene el bucle de animacion */
+void widget_set_fps(int fps);      /* FPS_… o 0 (detiene el bucle de animación) */
 void widget_close(void);
-int  widget_mouse(int *x, int *y); /* posicion actual; devuelve 1 si esta dentro */
-/* Envia (code, value) al widget 'name' si esta abierto; no bloquea. 1 si existe. */
+int  widget_mouse(int *x, int *y); /* posición actual; devuelve 1 si está dentro */
+/* Envía (code, value) al widget 'name' si está abierto; no bloquea. 1 si existe. */
 int  widget_post(const wchar_t *name, int code, int value);
-/* posicion y tamano de la ventana en pixeles de pantalla; 0 si aun no hay ventana */
+/* posición y tamaño de la ventana en píxeles de pantalla; 0 si aún no hay ventana */
 int  widget_rect(int *x, int *y, int *w, int *h);
+/* 1 si Windows tiene desactivadas las animaciones: los efectos transitorios saltan
+ * a su final (la mecánica del juego no cambia) */
+int  widget_reduce_motion(void);
 
-/* Configuracion persistente (%APPDATA%\fidgets\<exe>.ini, seccion = name). */
+/* Configuración persistente (%APPDATA%\fidgets\<exe>.ini, sección = name).
+ * Leer siempre validando (cfg_get_range / cfg_get_choice); guardar el valor real. */
 int  cfg_get_int(const wchar_t *key, int def);
+int  cfg_get_range(const wchar_t *key, int def, int min, int max);       /* def si sale del rango */
+int  cfg_get_choice(const wchar_t *key, int def, const int *vals, int n); /* def si no es uno de vals */
 void cfg_set_int(const wchar_t *key, int value);
-/* lo mismo para la seccion de otro widget del mismo programa */
+void cfg_delete_prefix(const wchar_t *prefix);   /* borra las claves que empiezan con prefix */
+/* lo mismo para la sección de otro widget del mismo programa */
 int  cfg_get_int_in(const wchar_t *section, const wchar_t *key, int def);
 void cfg_set_int_in(const wchar_t *section, const wchar_t *key, int value);
-/* TEMPORAL (quitar antes de publicar): renombra una clave de la seccion del widget si
- * la nueva aun no existe; 1 si la renombro. */
+/* TEMPORAL (quitar antes de publicar): renombra una clave de la sección del widget si
+ * la nueva aún no existe; 1 si la renombró. */
 int  cfg_rename(const wchar_t *old_key, const wchar_t *new_key);
-/* TEMPORAL: copia una seccion de %APPDATA%\bored\<legacy_ini>.ini si aun no existe
- * (la base ya lo hace con la del widget; sirve para la de un acompanante). */
+/* TEMPORAL: copia una sección de %APPDATA%\bored\<legacy_ini>.ini si aún no existe
+ * (la base ya lo hace con la del widget; sirve para la de un acompañante). */
 void cfg_migrate_section(const wchar_t *section, const wchar_t *legacy_ini, const wchar_t *legacy_section);
 
 /* Dibujo sobre el buffer de la ventana. */
 void gfx_clear(Color c);
 /* fondo invisible que igual recibe clics (para arrastrar sin panel visible),
- * aun con la opacidad mas baja */
+ * aun con la opacidad más baja */
 void gfx_clear_hit(void);
 void gfx_rect(int x, int y, int w, int h, Color c);
 void gfx_round_rect(int x, int y, int w, int h, int r, Color c);
 void gfx_circle(float cx, float cy, float r, Color c);
-void gfx_poly(const float *xy, int n, Color c); /* poligono CONVEXO, xy = x0,y0,x1,y1... */
+void gfx_poly(const float *xy, int n, Color c); /* polígono CONVEXO, xy = x0,y0,x1,y1... */
 void gfx_text(int x, int y, const wchar_t *s, Color c, int size, int align);
-/* ancho logico de los primeros n caracteres de s (n < 0 = todo); flags: TEXT_MONO */
+/* ancho lógico de los primeros n caracteres de s (n < 0 = todo); flags: TEXT_MONO */
 int  gfx_text_width(const wchar_t *s, int n, int size, int flags);
 
 /* Utilidades. */
-uint32_t rnd(void);                /* xorshift, ya sembrado */
+uint32_t rnd(void);                /* xorshift, ya sembrado (FIDGETS_SEED lo fija) */
 int      rnd_range(int lo, int hi);/* [lo, hi] */
-double   now_seconds(void);
+double   now_seconds(void);        /* reloj monótono; nunca la hora del sistema */
 
 #endif

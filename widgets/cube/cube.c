@@ -222,12 +222,12 @@ static void load_stats(void) {
     ntimes = 0;
     for (int i = 0; i < 12; i++) {
         wsprintfW(k, L"t%d", i);
-        int v = cfg_get_int(k, -2);
+        int v = cfg_get_range(k, -2, -2, 36000000);
         if (v == -2) break;
         times[ntimes++] = v;
     }
-    best = cfg_get_int(L"best", 0);
-    use_ins = cfg_get_int(L"inspection", 0);
+    best = cfg_get_range(L"best", 0, 0, 36000000);
+    use_ins = cfg_get_range(L"inspection", 0, 0, 1);
 }
 
 static void save_stats(void) {
@@ -569,29 +569,78 @@ static void closed(int by_user) { (void)by_user; close_map(); }
 
 /* ------------------------------------------------------------ menu y arranque */
 
-/* velocidades de giro de csTimer: duracion de cada giro en ms (0 = instantaneo) */
-static const int SPEEDS[4] = { 0, 50, 100, 200 };
-static const wchar_t *const MENU[] = {
-    L"Inspección 15 s", L"Mapa de teclas", L"Borrar tiempos",
-    L"Giro instantáneo", L"Giro rápido (50 ms)", L"Giro normal (100 ms)", L"Giro lento (200 ms)", 0,
+/* Textos de la interfaz (ver «Idiomas y textos» en CLAUDE.md). */
+enum {
+    T_NONE, T_TITLE, T_INSPECTION, T_KEYMAP, T_SPEED, T_SPEED_0, T_SPEED_50, T_SPEED_100, T_SPEED_200,
+    T_CLEAR, T_CLEAR_YES, T_H_SPACE, T_H_KEYS, T_H_ARROWS, T_H_ESC, T_COUNT
+};
+static const wchar_t *const TXT_ES[T_COUNT] = {
+    [T_TITLE] = L"Cubo",
+    [T_INSPECTION] = L"Inspección 15 s",
+    [T_KEYMAP] = L"Mapa de teclas",
+    [T_SPEED] = L"Velocidad de giro",
+    [T_SPEED_0] = L"Instantánea",
+    [T_SPEED_50] = L"Rápida (50 ms)",
+    [T_SPEED_100] = L"Normal (100 ms)",
+    [T_SPEED_200] = L"Lenta (200 ms)",
+    [T_CLEAR] = L"Borrar tiempos y récord",
+    [T_CLEAR_YES] = L"Sí, borrar todo",
+    [T_H_SPACE] = L"Espacio · mezclar",
+    [T_H_KEYS] = L"Letras · girar (ver Mapa de teclas)",
+    [T_H_ARROWS] = L"Flechas · girar la cámara",
+    [T_H_ESC] = L"Esc · abortar",
+};
+static const wchar_t *const TXT_EN[T_COUNT] = {
+    [T_TITLE] = L"Cube",
+    [T_INSPECTION] = L"15 s inspection",
+    [T_KEYMAP] = L"Key map",
+    [T_SPEED] = L"Turn speed",
+    [T_SPEED_0] = L"Instant",
+    [T_SPEED_50] = L"Fast (50 ms)",
+    [T_SPEED_100] = L"Normal (100 ms)",
+    [T_SPEED_200] = L"Slow (200 ms)",
+    [T_CLEAR] = L"Clear times and record",
+    [T_CLEAR_YES] = L"Yes, clear everything",
+    [T_H_SPACE] = L"Space · scramble",
+    [T_H_KEYS] = L"Letters · turn (see Key map)",
+    [T_H_ARROWS] = L"Arrows · rotate the camera",
+    [T_H_ESC] = L"Esc · abort",
 };
 
+/* velocidades de giro de csTimer: duración de cada giro en ms (0 = instantáneo) */
+static const int SPEEDS[4] = { 0, 50, 100, 200 };
+enum {
+    M_INSPECTION, M_KEYMAP, M_SPEED, M_SPEED_0, M_SPEED_50, M_SPEED_100, M_SPEED_200, M_SPEED_END,
+    M_SEP, M_CLEAR, M_CLEAR_YES, M_CLEAR_END, M_COUNT
+};
+static const int MENU[M_COUNT + 1] = {
+    [M_INSPECTION] = T_INSPECTION, [M_KEYMAP] = T_KEYMAP,
+    [M_SPEED] = T_SPEED | MENU_SUB,
+    [M_SPEED_0] = T_SPEED_0, [M_SPEED_50] = T_SPEED_50, [M_SPEED_100] = T_SPEED_100, [M_SPEED_200] = T_SPEED_200,
+    [M_SPEED_END] = MENU_END,
+    [M_SEP] = MENU_SEP,
+    [M_CLEAR] = T_CLEAR | MENU_SUB, [M_CLEAR_YES] = T_CLEAR_YES, [M_CLEAR_END] = MENU_END,
+};
+static const int HELP[] = { T_H_SPACE, T_H_KEYS, T_H_ARROWS, T_H_ESC, 0 };
+
 static int menu_checked(int i) {
-    if (i >= 3) return turn_ms == SPEEDS[i - 3];
-    return (i == 0 && use_ins) || (i == 1 && map_on);
+    if (i >= M_SPEED_0 && i <= M_SPEED_200) return turn_ms == SPEEDS[i - M_SPEED_0] ? CHECK_RADIO : CHECK_NONE;
+    if (i == M_INSPECTION) return use_ins;
+    if (i == M_KEYMAP) return map_on;
+    return CHECK_NONE;
 }
 
 static void on_menu(int i) {
-    if (i == 0) { use_ins = !use_ins; cfg_set_int(L"inspection", use_ins); }
-    else if (i == 1) {
+    if (i == M_INSPECTION) { use_ins = !use_ins; cfg_set_int(L"inspection", use_ins); }
+    else if (i == M_KEYMAP) {
         map_on = !map_on;
         cfg_set_int(L"map", map_on);
         if (map_on) open_map(); else close_map();
-    } else if (i == 2) {
+    } else if (i == M_CLEAR_YES) {
         ntimes = 0; best = 0; last_ms = -2; last_pen = 0;
         save_stats();
-    } else if (i >= 3) {
-        turn_ms = SPEEDS[i - 3];
+    } else if (i >= M_SPEED_0 && i <= M_SPEED_200) {
+        turn_ms = SPEEDS[i - M_SPEED_0];
         cfg_set_int(L"turn_ms", turn_ms);
     }
 }
@@ -607,11 +656,11 @@ static void init(void) {
     reset_cube();
     sync_vis();
     load_stats();
-    turn_ms = cfg_get_int(L"turn_ms", 100);
-    cam_t = cfg_get_int(L"cam_t", 0);
-    cam_p = cfg_get_int(L"cam_p", 6);
+    turn_ms = cfg_get_choice(L"turn_ms", 100, SPEEDS, 4);
+    cam_t = cfg_get_range(L"cam_t", 0, -6, 6);
+    cam_p = cfg_get_range(L"cam_p", 6, -6, 6);
     setup_camera();
-    map_on = cfg_get_int(L"map", 0);
+    map_on = cfg_get_range(L"map", 0, 0, 1);
     if (map_on) open_map();
 }
 static void hide(int h) { if (h && state != IDLE) abort_solve(); }
@@ -622,7 +671,8 @@ int main(void) {
         .name = L"cube", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw, .on_key = key, .on_hide = hide, .on_focus = focus,
         .on_message = message, .on_close = closed,
-        .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu,
+        .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
+        .menu = MENU, .menu_checked = menu_checked, .on_menu = on_menu, .help = HELP,
         .legacy_ini = L"cubo",
     };
     return widget_run(&d);

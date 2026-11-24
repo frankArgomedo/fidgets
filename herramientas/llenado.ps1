@@ -16,36 +16,39 @@ $root = Split-Path $PSScriptRoot -Parent
 $tmp = Join-Path $env:TEMP "fidgets_llenado"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 
-# Casos: widget, argumentos, ini, teclas (scan hex), texto (on_char), ms simulados, nombre,
-#        estado transitorio (puede usar el margen), grupo para el llenado
+# Casos: widget, argumentos, ini, eventos (FIDGETS_EVENTS, ver widget.h), nombre,
+#        estado transitorio (puede usar el margen), grupo para el llenado.
+# Cada caso se fotografia en cada idioma (lang:es y lang:en antes de sus eventos).
 $casos = @()
 foreach ($t in -6, -3, 0, 3, 6) { foreach ($p in -6, 0, 6) {
-  $casos += , @("cube", "", "[cube]`r`ncam_t=$t`r`ncam_p=$p`r`nturn_ms=0", "", "", 0, "cube camara t=$t p=$p", $false, "cube (todas las camaras)")
+  $casos += , @("cube", "", "[cube]`r`ncam_t=$t`r`ncam_p=$p`r`nturn_ms=0", "", "cube camara t=$t p=$p", $false, "cube (todas las camaras)")
 } }
 # giros a mitad de animacion (100 ms por giro; 50 ms = 45 grados), camara de frente y girada
 foreach ($cam in @("cam_t=0`r`ncam_p=6", "cam_t=6`r`ncam_p=6")) {
   foreach ($k in @(@("24", "U"), @("17", "R"), @("23", "F"), @("27", "y"))) {
-    $casos += , @("cube", "", "[cube]`r`n$cam`r`nturn_ms=100", $k[0], "", 50, "cube giro $($k[1]) a 45 ($($cam -replace "`r`n", ' '))", $true, "")
+    $casos += , @("cube", "", "[cube]`r`n$cam`r`nturn_ms=100", "key:$($k[0]) tick:50", "cube giro $($k[1]) a 45 ($($cam -replace "`r`n", ' '))", $true, "")
   }
 }
-$casos += , @("cube", "--keys", "", "", "", 0, "mapa reposo", $false, "mapa")
-$casos += , @("cube", "--keys", "", "17", "", 60, "mapa tecla iluminada", $false, "mapa")
-$casos += , @("typing", "", "", "", "", 0, "typing reposo", $false, "typing texto")
-$casos += , @("typing", "", "[typing]`r`npunctuation=1`r`nnumbers=1`r`nlang=1`r`nlist=1000", "", "", 0, "typing puntuacion", $false, "typing texto")
-$casos += , @("typing", "", "", "", "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", 0, "typing letras de mas", $false, "typing texto")
-$casos += , @("typing", "", "[typing]`r`nmode=1`r`nwords=10", "", "q w e r t y u i o p ", 0, "typing resultado", $false, "typing resultado")
-$casos += , @("typing", "", "[typing]`r`ndifficulty=2", "", "##", 0, "typing fallo", $false, "typing fallo")
-$casos += , @("dot", "", "", "", "", 0, "dot reposo", $false, "")   # area de juego: los puntos ocupan toda la celda al jugar (no se puede simular el clic)
+$casos += , @("cube", "--keys", "", "", "mapa reposo", $false, "mapa")
+$casos += , @("cube", "--keys", "", "key:17 tick:60", "mapa tecla iluminada", $false, "mapa")
+$casos += , @("typing", "", "", "", "typing reposo", $false, "typing texto")
+$casos += , @("typing", "", "[typing]`r`npunctuation=1`r`nnumbers=1`r`nlang=1`r`nlist=1000", "", "typing puntuacion", $false, "typing texto")
+$casos += , @("typing", "", "", "text:qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq", "typing letras de mas", $false, "typing texto")
+$casos += , @("typing", "", "[typing]`r`nmode=1`r`nwords=10", "text:q\sw\se\sr\st\sy\su\si\so\sp\s", "typing resultado", $false, "typing resultado")
+$casos += , @("typing", "", "[typing]`r`ndifficulty=2", "text:##", "typing fallo", $false, "typing fallo")
+$casos += , @("dot", "", "", "", "dot reposo", $false, "")
+# jugando: los puntos aparecen al azar en toda la celda (no cuenta para el llenado)
+$casos += , @("dot", "", "", "click:80,68 tick:300", "dot jugando", $false, "")
 
 $fallos = 0
 $grupos = [ordered]@{}
-foreach ($c in $casos) {
+$env:FIDGETS_SEED = "1"
+foreach ($c0 in $casos) { foreach ($lang in "es", "en") {
+  $c = @($c0[0], $c0[1], $c0[2], "lang:$lang $($c0[3])", "$($c0[4]) [$lang]", $c0[5], $c0[6])
   if ($Only -and $c[0] -ne $Only) { continue }
   $exe = Join-Path $root "bin\$($c[0]).exe"
   "$($c[2])" | Set-Content "$tmp\p.ini" -Encoding Unicode
-  $env:FIDGETS_INI = "$tmp\p.ini"; $env:FIDGETS_SNAPSHOT = "$tmp\f.bsnp"; $env:FIDGETS_TICK_MS = "$($c[5])"
-  if ($c[3]) { $env:FIDGETS_KEYS = $c[3] } else { Remove-Item Env:FIDGETS_KEYS -ErrorAction SilentlyContinue }
-  if ($c[4]) { $env:FIDGETS_TEXT = $c[4] } else { Remove-Item Env:FIDGETS_TEXT -ErrorAction SilentlyContinue }
+  $env:FIDGETS_INI = "$tmp\p.ini"; $env:FIDGETS_SNAPSHOT = "$tmp\f.bsnp"; $env:FIDGETS_EVENTS = $c[3]
   if ($c[1]) { Start-Process $exe -ArgumentList $c[1] -Wait } else { Start-Process $exe -Wait }
   $d = [IO.File]::ReadAllBytes("$tmp\f.bsnp"); $w = [BitConverter]::ToInt32($d, 4); $h = [BitConverter]::ToInt32($d, 8)
   $x0 = $w; $y0 = $h; $x1 = -1; $y1 = -1
@@ -54,17 +57,17 @@ foreach ($c in $casos) {
   } }
   $l = $x0; $t = $y0; $r = $w - 1 - $x1; $b = $h - 1 - $y1
   $min = [Math]::Min([Math]::Min($l, $r), [Math]::Min($t, $b))
-  if ($c[8]) {
-    if (-not $grupos.Contains($c[8])) { $grupos[$c[8]] = @($w, $h, $w, $h, -1, -1) }
-    $g = $grupos[$c[8]]
+  if ($c[6]) {
+    if (-not $grupos.Contains($c[6])) { $grupos[$c[6]] = @($w, $h, $w, $h, -1, -1) }
+    $g = $grupos[$c[6]]
     $g[2] = [Math]::Min($g[2], $x0); $g[3] = [Math]::Min($g[3], $y0); $g[4] = [Math]::Max($g[4], $x1); $g[5] = [Math]::Max($g[5], $y1)
   }
   # los estados transitorios (giros de 100 ms) pueden usar el margen, pero no salirse de la ventana
-  $ok = if ($c[7]) { $min -ge 0 -and $x0 -gt 0 -and $y0 -gt 0 -and $x1 -lt $w - 1 -and $y1 -lt $h - 1 } else { $min -ge $MARGIN }
+  $ok = if ($c[5]) { $min -ge 0 -and $x0 -gt 0 -and $y0 -gt 0 -and $x1 -lt $w - 1 -and $y1 -lt $h - 1 } else { $min -ge $MARGIN }
   $nota = if ($ok) { "ok" } else { "FALLA: margen $min < $MARGIN" }
   if (-not $ok) { $fallos++ }
-  if ($Detalle -or -not $ok) { "{0,-40} {1}x{2}  izq {3,3} arr {4,3} der {5,3} aba {6,3}  {7}" -f $c[6], $w, $h, $l, $t, $r, $b, $nota }
-}
+  if ($Detalle -or -not $ok) { "{0,-40} {1}x{2}  izq {3,3} arr {4,3} der {5,3} aba {6,3}  {7}" -f $c[4], $w, $h, $l, $t, $r, $b, $nota }
+} }
 "--- llenado por grupo (todos sus estados juntos)"
 foreach ($k in $grupos.Keys) {
   $g = $grupos[$k]
@@ -77,6 +80,6 @@ foreach ($k in $grupos.Keys) {
   "{0,-40} izq {1,3} arr {2,3} der {3,3} aba {4,3}  {5}" -f $k, $l, $t, $r, $b, $nota
   if (-not $ejeLleno -or $escalon) { $fallos++ }
 }
-Remove-Item Env:FIDGETS_SNAPSHOT, Env:FIDGETS_TICK_MS, Env:FIDGETS_INI, Env:FIDGETS_KEYS, Env:FIDGETS_TEXT -ErrorAction SilentlyContinue
+Remove-Item Env:FIDGETS_SNAPSHOT, Env:FIDGETS_EVENTS, Env:FIDGETS_INI, Env:FIDGETS_SEED -ErrorAction SilentlyContinue
 "{0} fallos" -f $fallos
 exit [int]($fallos -gt 0)

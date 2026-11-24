@@ -43,7 +43,7 @@ static void lose_life(void) {
     } else new_dot();
 }
 
-static void init(void) { best = cfg_get_int(L"best", 0); }
+static void init(void) { best = cfg_get_range(L"best", 0, 0, 1000000); }
 
 static void tick(float dt) {
     if (flash > 0) flash -= dt;
@@ -100,11 +100,37 @@ static void draw(void) {
 
 static void hide(int hidden) { (void)hidden; /* el temporizador se pausa solo */ }
 
+/* Textos de la interfaz (ver «Idiomas y textos» en CLAUDE.md). */
+enum { T_NONE, T_TITLE, T_CLEAR, T_CLEAR_YES, T_H_PLAY, T_H_DOT, T_H_MISS, T_COUNT };
+static const wchar_t *const TXT_ES[T_COUNT] = {
+    [T_TITLE] = L"Punto",
+    [T_CLEAR] = L"Borrar récord", [T_CLEAR_YES] = L"Sí, borrarlo",
+    [T_H_PLAY] = L"Clic en el botón · jugar",
+    [T_H_DOT] = L"Clic en el punto · un punto más",
+    [T_H_MISS] = L"Fallar o dejar que se esfume · una vida menos",
+};
+static const wchar_t *const TXT_EN[T_COUNT] = {
+    [T_TITLE] = L"Dot",
+    [T_CLEAR] = L"Clear record", [T_CLEAR_YES] = L"Yes, clear it",
+    [T_H_PLAY] = L"Click the button · play",
+    [T_H_DOT] = L"Click the dot · one more point",
+    [T_H_MISS] = L"Miss it or let it fade · one life less",
+};
+enum { M_CLEAR, M_CLEAR_YES, M_CLEAR_END, M_COUNT };
+static const int MENU[M_COUNT + 1] = { [M_CLEAR] = T_CLEAR | MENU_SUB, [M_CLEAR_YES] = T_CLEAR_YES, [M_CLEAR_END] = MENU_END };
+static const int HELP[] = { T_H_PLAY, T_H_DOT, T_H_MISS, 0 };
+
+static void on_menu(int i) {
+    if (i == M_CLEAR_YES) { best = 0; cfg_set_int(L"best", 0); }
+}
+
 int main(void) {
     WidgetDesc d = {
         .name = L"dot", .w = W, .h = H, .fps = 0,
         .on_init = init, .on_tick = tick, .on_draw = draw,
         .on_mouse = mouse, .on_hide = hide,
+        .texts = { TXT_ES, TXT_EN }, .ntexts = T_COUNT,
+        .menu = MENU, .on_menu = on_menu, .help = HELP,
         .legacy_ini = L"punto",
     };
     return widget_run(&d);
