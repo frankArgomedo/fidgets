@@ -1,7 +1,7 @@
 # swarm: survivors-like de bolsillo
 
 Nombre provisional (`swarm` u `horde`; ninguno choca con un comando de Windows).
-Estado: **en diseño**, sin código.
+Estado: **en diseño**, con prototipo en `widgets/swarm/swarm.c` (paso 2 hecho).
 
 Género: *survivors-like* (también *bullet heaven*). Se toman sus mecánicas (ataque
 automático, oleadas que crecen, elegir una mejora al subir de nivel); nunca el nombre,
@@ -223,36 +223,31 @@ Cómo se ajusta: una herramienta de simulación (herramienta de desarrollo, como
 mejoras al azar), corre cientos de partidas sin ventana y mide cuánto duran. Objetivo:
 mediana del bot ~4–5 min, para que una persona que piensa sus mejoras llegue a 6–10.
 
+### Celda, cantidad de enemigos y tarjetas
+Decidido con el prototipo (fotos a 200, 240 y 280, al 100 % y al 25 % de opacidad,
+sobre fondo oscuro y claro).
+
+- **Celda 240×240.** Es la menor que cumple el requisito de reacción: desde el borde
+  hay ~114 px hasta el jugador, ~1,5 s para el enemigo rápido (75 px/s). En 200 son
+  ~94 px (1,25 s) y las tarjetas no dan para «Velocidad»; en 280 sobra espacio en el
+  inicio y los enemigos se ven chicos.
+- **Enemigos:** tope de 54 visibles (15 % de cobertura con enemigos de 12 px) y 64 en
+  memoria. Se ve lleno pero se lee.
+  Fórmula: visibles ≈ cobertura × área útil ÷ área de un enemigo; con más de ~20 % ya
+  no se ve por dónde escapar. Al llegar al tope, la presión sube con más vida, no con
+  más cantidad.
+- **3 tarjetas** de ~72 px al subir de nivel; la de inicio, 4 ataques en 2×2.
+- **Sin panel en pausa ni al elegir:** el juego se atenúa (alfa /4), el fondo no.
+
+Consumo con la pantalla llena (54 enemigos, 3 ataques; `consumo.ps1` con
+`SWARM_FILL=1`): .exe 98,5 KB, memoria 1,79 MB, CPU en reposo 0 ms, dibujo 0,71 ms por
+frame. Todo dentro de los topes.
+
 ## Por decidir
 
-### Celda y tamaños
-Propuesta: 240×240 (con 160 todo queda diminuto al 25 % de opacidad); jugador ~12 px,
-enemigos 10–14 px. Confirmar con fotos.
-
-### Cantidad de enemigos
-Enemigos visibles como máximo ≈ cobertura × área útil ÷ área de un enemigo.
-Área útil en 240×240: 228×228 ≈ 52.000 px².
-
-| Enemigo | Área | 10 % | 15 % | 20 % |
-|---|---|---|---|---|
-| 10 px | 100 px² | ~52 | ~78 | ~104 |
-| 12 px | 144 px² | ~36 | ~54 | ~72 |
-| 14 px | 196 px² | ~26 | ~40 | ~53 |
-
-- Empezar en 15 % de cobertura; con más de ~20 % ya no se ve por dónde escapar.
-- Al llegar al tope, la presión sube con más vida, más velocidad o enemigos de otro
-  tipo, no con más cantidad. Arreglos fijos: memoria fija y ≤ 3 ms por frame.
-- Tiempo para reaccionar: desde el borde hay ~114 px hasta el jugador. Para ≥ 1,5 s,
-  los enemigos no pasan de ~75 px/s.
-- Valor de trabajo: ~54 visibles y 64 en memoria (ver «Enemigos»). Se confirma con
-  fotos al 25 % de opacidad y con la simulación, junto con la celda.
-
-### Tarjetas de mejora: 2 o 3
-El juego se pausa y aparecen tarjetas con ícono (~24 px) y nombre (11 px); se eligen
-con clic o con 1, 2, 3. En 240 px caben 3 de ~70 px (~10–11 caracteres de nombre). Se
-decide con fotos (modo foto y `llenado.ps1` en cada idioma): si 3 no caben, quedan 2.
-La tarjeta inicial de 4 ataques va en 2×2, aparte de esta decisión; también se
-comprueba con fotos.
+- Confirmar con `llenado.ps1` que el nombre más largo («Velocidad», «Fire rate») cabe
+  en la tarjeta y los márgenes de cada estado, en los dos idiomas.
+- Ajustar la curva con la simulación (paso 3).
 
 ## Lo que necesita la base
 - **Guardar un bloque de estado** (binario o hex) para la partida a medias; al leerlo,

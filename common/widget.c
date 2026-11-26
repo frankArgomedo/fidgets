@@ -881,6 +881,15 @@ static void run_events(const wchar_t *p) {
                 if (*p != L',') break;
                 p++;
             }
+        } else if (starts(p, L"up:")) {   /* soltar teclas (para las que se mantienen) */
+            p += 3;
+            for (;;) {
+                int v = read_int(&p, 16);
+                int vk = (int)MapVirtualKeyW((UINT)((v & SCAN_EXTENDED) ? 0xE000 | (v & 0xFF) : v), MAPVK_VSC_TO_VK_EX);
+                if (D->on_key) D->on_key(vk, v, 0);
+                if (*p != L',') break;
+                p++;
+            }
         } else if (starts(p, L"text:")) {
             p += 5;
             snap_focus(1);   /* escribir implica haber clicado el widget */

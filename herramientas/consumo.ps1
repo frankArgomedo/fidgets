@@ -53,7 +53,9 @@ $casos = @(
   @("cube", "cube", "", { param($h, $i) if ($i -eq 0) { Send-Key $h 0x20 0x39 } elseif ($i % 2 -eq 0) { Send-Key $h 0x4A 0x24 } }),
   @("keys", "cube", "--keys", { param($h, $i) if ($i % 3 -eq 0) { Send-Key $h 0x49 0x17 } }),     # I: ilumina
   @("dot", "dot", "", { param($h, $i) if ($i -eq 0) { Send-Click $h 80 68 } }),                     # jugar
-  @("typing", "typing", "", { param($h, $i) Send-Char $h 'a' })                                    # escribir
+  @("typing", "typing", "", { param($h, $i) Send-Char $h 'a' }),                                   # escribir
+  # prototipo: con SWARM_FILL=1 en el entorno, la pantalla llena (enemigos al tope)
+  @("swarm", "swarm", "", { param($h, $i) if ($i -eq 0) { Send-Click $h 60 90 } })                 # elegir disparo
 )
 
 $fallos = 0

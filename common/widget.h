@@ -33,6 +33,7 @@
  * Pruebas sin ventana (modo foto): FIDGETS_SNAPSHOT=archivo dibuja una vez y sale.
  * FIDGETS_EVENTS es un guion de eventos en orden, separados por espacios:
  *   key:17,24   scan codes en hex (pulsar; vk se deduce)  text:hola\sque   texto para on_char
+ *   up:17,24    soltar esas teclas (para las que se mantienen pulsadas)
  *   click:80,68 clic (bajar y subir) en x,y       tick:500         ms simulados
  *   hide / show / focus / blur                    lang:es | lang:en
  * En text: \s espacio, \b retroceso, \t Tab, \n Enter; cada carácter avanza 100 ms
