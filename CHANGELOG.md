@@ -7,6 +7,11 @@ entry says which widgets changed.
 
 ## [Unreleased]
 
+### Changed
+
+- `typing`: the `.exe` is 16 KB smaller (125 → 109.5 KB); the word-list index no
+  longer stores empty space in the file.
+
 ## [0.1.0] - 2026-11-24
 
 First public version.

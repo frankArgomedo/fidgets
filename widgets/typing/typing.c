@@ -70,15 +70,18 @@ static const char EN_TXT[] = {
     , 0 };
 
 #define LIST_MAX 1000
-typedef struct { const char *utf8; wchar_t *pool; const wchar_t *w[LIST_MAX]; int n; } WordList;
-static WordList lists[2] = { { ES_TXT }, { EN_TXT } };
+static const char *const LIST_TXT[2] = { ES_TXT, EN_TXT };
+/* Sin inicializador a propósito: así va a .bss y no ocupa 16 KB de ceros en el .exe. */
+typedef struct { wchar_t *pool; const wchar_t *w[LIST_MAX]; int n; } WordList;
+static WordList lists[2];
 
 static WordList *get_list(int lang) {
     WordList *L = &lists[lang];
     if (L->pool) return L;
-    int n = MultiByteToWideChar(CP_UTF8, 0, L->utf8, -1, NULL, 0);
+    const char *utf8 = LIST_TXT[lang];
+    int n = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
     L->pool = HeapAlloc(GetProcessHeap(), 0, (size_t)n * sizeof(wchar_t));
-    MultiByteToWideChar(CP_UTF8, 0, L->utf8, -1, L->pool, n);
+    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, L->pool, n);
     wchar_t *p = L->pool;
     if (*p == 0xFEFF) p++;
     while (*p && L->n < LIST_MAX) {
