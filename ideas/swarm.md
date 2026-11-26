@@ -114,9 +114,68 @@ dibujado con figuras (10 en total, segunda señal además del nombre) y el nivel
 
 En el juego, cada ataque tiene su forma: punto, anillo tenue, bolas, anillo que crece.
 
+### Enemigos
+Mismas unidades: el jugador empieza con 100 de vida y 70 px/s; vista de ~114 px.
+
+| Tipo | Forma y tamaño | Vida | Velocidad | Daño | Gema | Desde |
+|---|---|---|---|---|---|---|
+| **Básico** | triángulo, 12 px | 10 | 40 px/s | 10 | 1 XP | min 0 |
+| **Rápido** | triángulo estrecho que apunta hacia donde va, 10 px | 5 | 75 px/s (el tope) | 6 | 1 XP | min 2 |
+| **Lento** | cuadrado, 14 px | 40 | 25 px/s | 15 | 3 XP | min 4 |
+| **Jefe** | cuadrado grande con borde, 24 px | 300 | 35 px/s | 20 | gema grande: lo que falte para subir de nivel | min 6, y cada 3 min |
+
+- Cada tipo pide otra respuesta: el básico es el relleno; del rápido no se escapa sin
+  la pasiva de velocidad, pero muere con cualquier cosa; el lento se esquiva fácil pero
+  tapa el camino y aguanta; el jefe pone a prueba el daño de la build y siempre deja una
+  subida de nivel.
+- Con la curva: la **vida** la multiplica la curva (todos los tipos, también el jefe);
+  la **velocidad** es fija por tipo y queda bajo el tope; el **daño** sube +10 % cada
+  2 min, hasta ×2.
+
+Proporción de tipos que aparecen:
+
+| Minuto | Básico | Rápido | Lento |
+|---|---|---|---|
+| 0–2 | 100 % | — | — |
+| 2–4 | 80 % | 20 % | — |
+| 4+ | 60 % | 25 % | 15 % |
+
+- Aparición: ~0,7 enemigos/s al empezar, subiendo hasta el tope de ~54 visibles hacia
+  el min 4. Arreglo fijo de **64 enemigos** (los visibles más los que vienen llegando de
+  fuera de la vista).
+- Todos van derecho hacia el jugador y **se empujan un poco entre sí** para no apilarse
+  en un punto (se ve cuántos hay; con 64 son ~2.000 comparaciones por frame).
+- El que queda a más de ~170 px reaparece por delante: escapar corriendo no quita la
+  presión.
+- **Flecha al jefe:** mientras el jefe está fuera de la vista, una flecha en el borde de
+  la ventana apunta hacia él (información: alfa ≥ 200). Que no aparezca de sorpresa.
+
+### Gemas y experiencia
+- Gemas: rombos de 6 px; caen donde muere el enemigo y vuelan hacia el jugador al entrar
+  en el radio del imán. **No vencen nunca** (perderlas por no llegar a tiempo iría contra
+  «Justo»).
+- Tope de 32 gemas en memoria: con el tope lleno, la nueva se suma a la más lejana (no
+  se pierde XP).
+- El nivel *n* pide **5 + 4·(n−1)** XP (5, 9, 13, 17…).
+
+| Hito | XP acumulada | Objetivo |
+|---|---|---|
+| Nivel 2 | 5 | ~10–15 s |
+| Nivel 5 | 44 | ~1 min |
+| Nivel 15 | 490 | ~4 min |
+| Techo (34 subidas) | 2.414 | ~11–12 min |
+
+- El techo llega más o menos cuando termina una buena partida: una normal termina con
+  cupo libre, y curar 30 casi nunca se ve.
+- Una tarjeta cada ~10–15 s al principio y cada ~25 s al final: las recompensas van
+  al principio.
+- La simulación comprueba estos hitos, junto con la mediana del bot y que los 4 inicios
+  queden parejos.
+
 ### Accesibilidad
-Las formas son la segunda señal además del color: jugador = círculo, enemigos =
-triángulos, gemas = rombos; el jefe se distingue por el tamaño.
+Las formas son la segunda señal además del color: jugador = círculo, gemas = rombos, y
+cada tipo de enemigo su forma y tamaño (triángulo, triángulo estrecho, cuadrado, cuadrado
+grande con borde).
 
 ### Curva de dificultad
 La partida termina cuando la amenaza supera el poder del jugador. **El poder tiene
@@ -185,6 +244,8 @@ Enemigos visibles como máximo ≈ cobertura × área útil ÷ área de un enemi
   tipo, no con más cantidad. Arreglos fijos: memoria fija y ≤ 3 ms por frame.
 - Tiempo para reaccionar: desde el borde hay ~114 px hasta el jugador. Para ≥ 1,5 s,
   los enemigos no pasan de ~75 px/s.
+- Valor de trabajo: ~54 visibles y 64 en memoria (ver «Enemigos»). Se confirma con
+  fotos al 25 % de opacidad y con la simulación, junto con la celda.
 
 ### Tarjetas de mejora: 2 o 3
 El juego se pausa y aparecen tarjetas con ícono (~24 px) y nombre (11 px); se eligen
