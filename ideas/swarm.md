@@ -7,6 +7,20 @@ Género: *survivors-like* (también *bullet heaven*). Se toman sus mecánicas (a
 automático, oleadas que crecen, elegir una mejora al subir de nivel); nunca el nombre,
 las armas, los personajes ni el aspecto de un juego concreto.
 
+## Probar el prototipo
+
+No va en los releases (`widgets/swarm/PROTOTIPO`) ni en los README. En cualquier máquina
+con el repo y [Zig](https://ziglang.org/) (`winget install zig.zig`):
+
+```powershell
+.\build.ps1 swarm
+$env:SWARM_LOG = "$env:APPDATA\fidgets\swarm_partidas.txt"; .\bin\swarm.exe
+```
+
+Con `SWARM_LOG`, cada partida terminada (y cada formación) se anota en ese archivo; sin
+la variable no escribe nada. El simulador: `.\herramientas\simular.ps1` (ver
+«Simulación»).
+
 ## Decidido
 
 ### Partida infinita
@@ -67,13 +81,14 @@ nivel 1, así que son **34 subidas hasta el techo**.
 - Cada ataque tiene que servir solo durante el primer minuto.
 
 **Tarjetas:** mejoras distintas al azar, entre subir algo que tienes y algo nuevo
-mientras haya cupo. Con todo al máximo, la tarjeta solo **cura 30**.
+mientras haya cupo. Con todo al máximo ya no hay tarjetas ni cura: empieza la recta
+final (ver «Curva de dificultad»).
 
 | Ataque | Nivel 1 | Nv 2 | Nv 3 | Nv 4 | Nv 5 |
 |---|---|---|---|---|---|
-| **Disparo**: proyectil al enemigo más cercano en la vista; 180 px/s | 1 proyectil, daño 10, cada 1,0 s | 2 proyectiles | daño 15 | atraviesa 1 enemigo | 3 proyectiles, cada 0,8 s |
-| **Aura**: daña a todo lo que está dentro | radio 24 px, 4 de daño cada 0,5 s | radio 30 | daño 6 | radio 36 | daño 8 y frena 30 % |
-| **Órbita**: bolas de 8 px girando a tu alrededor | 1 bola a 32 px, una vuelta cada 2 s, daño 8 | 2 bolas | daño 12 | 3 bolas | a 40 px, una vuelta cada 1,5 s |
+| **Disparo**: cada proyectil a un enemigo distinto (el más cercano, el segundo…) en la vista; 180 px/s | 1 proyectil, daño 10, cada 1,0 s | 2 proyectiles | daño 15 | atraviesa 1 enemigo | 3 proyectiles, cada 0,8 s |
+| **Aura**: daña a todo lo que está dentro | radio 24 px, 5 de daño cada 0,5 s | radio 30 | daño 7 | radio 36 | daño 9 y frena 30 % |
+| **Órbita**: bolas de 8 px girando a tu alrededor | 1 bola a 32 px, una vuelta cada 2 s, daño 10 | 2 bolas | daño 14 | 3 bolas | a 40 px, una vuelta cada 1,5 s |
 | **Onda**: anillo que crece y empuja | cada 4 s, hasta 60 px en 0,3 s, daño 12, empuja 20 px | hasta 72 px | cada 3 s | daño 18 | hasta 84 px, empuja 32 |
 
 - Cada uno resuelve otra cosa: el disparo mata de a uno y desde lejos, el aura limpia
@@ -120,17 +135,21 @@ Mismas unidades: el jugador empieza con 100 de vida y 70 px/s; vista de ~114 px.
 | Tipo | Forma y tamaño | Vida | Velocidad | Daño | Gema | Desde |
 |---|---|---|---|---|---|---|
 | **Básico** | triángulo, 12 px | 10 | 40 px/s | 10 | 1 XP | min 0 |
-| **Rápido** | triángulo estrecho que apunta hacia donde va, 10 px | 5 | 75 px/s (el tope) | 6 | 1 XP | min 2 |
-| **Lento** | cuadrado, 14 px | 40 | 25 px/s | 15 | 3 XP | min 4 |
-| **Jefe** | cuadrado grande con borde, 24 px | 300 | 35 px/s | 20 | gema grande: lo que falte para subir de nivel | min 6, y cada 3 min |
+| **Rápido** | triángulo estrecho que apunta hacia donde va, 10 px | 5 | 75 px/s (el tope) | 6 | 1 XP | min 1:30–2:30 |
+| **Lento** | cuadrado, 14 px | 40 | 25 px/s | 15 | 3 XP | min 3:30–4:30 |
+| **Jefe** | cuadrado grande con borde, 24 px | 300 | 35 px/s | 20 | gema grande: lo que falte para subir de nivel | min 5–7, y cada 2:30–3:30 |
 
 - Cada tipo pide otra respuesta: el básico es el relleno; del rápido no se escapa sin
   la pasiva de velocidad, pero muere con cualquier cosa; el lento se esquiva fácil pero
   tapa el camino y aguanta; el jefe pone a prueba el daño de la build y siempre deja una
   subida de nivel.
 - Con la curva: la **vida** la multiplica la curva (todos los tipos, también el jefe);
-  la **velocidad** es fija por tipo y queda bajo el tope; el **daño** sube +10 % cada
-  2 min, hasta ×2.
+  la **velocidad** de básico y lento sube de a poco entre el min 4 y el 12 (básico
+  40 → 55, lento 25 → 35 px/s; el rápido ya va al tope de 75); el **daño** sube +10 %
+  cada 2 min, hasta ×2.
+- **El lento y el jefe resisten:** el empuje de la onda y el frenado del aura les
+  afectan la mitad (al jefe el empuje no le afecta).
+- **Formaciones:** ver «Eventos al azar».
 
 Proporción de tipos que aparecen:
 
@@ -154,8 +173,9 @@ Proporción de tipos que aparecen:
 - Gemas: rombos de 6 px; caen donde muere el enemigo y vuelan hacia el jugador al entrar
   en el radio del imán. **No vencen nunca** (perderlas por no llegar a tiempo iría contra
   «Justo»).
-- Tope de 32 gemas en memoria: con el tope lleno, la nueva se suma a la más lejana (no
-  se pierde XP).
+- Tope de 32 gemas en memoria: con el tope lleno, la más lejana (la que quedó atrás)
+  se suma a la nueva, que cae cerca del jugador. No se pierde experiencia y no queda
+  lejos. La gema que acumula se ve más grande.
 - El nivel *n* pide **5 + 4·(n−1)** XP (5, 9, 13, 17…).
 
 | Hito | XP acumulada | Objetivo |
@@ -180,7 +200,7 @@ grande con borde).
 ### Curva de dificultad
 La partida termina cuando la amenaza supera el poder del jugador. **El poder tiene
 techo y la amenaza no**: cada mejora tiene nivel máximo y hay cupos (34 subidas hasta el
-techo, ver «Ataques y pasivas»); con todo al máximo, subir de nivel solo cura 30. Así
+techo, ver «Ataques y pasivas»). Así
 la partida es infinita en las reglas pero siempre termina, y lo que dura lo deciden
 cómo juegas y qué eliges.
 
@@ -189,39 +209,77 @@ Qué sube:
 | Qué | Tope | Por qué |
 |---|---|---|
 | Enemigos por segundo | Los ~54 visibles (15 % de cobertura) | Más no deja ver por dónde escapar |
-| Velocidad de los enemigos | ~75 px/s | Límite para reaccionar a tiempo |
+| Velocidad de los enemigos | ~75 px/s | Límite para reaccionar a tiempo (básico y lento suben hasta 55 y 35) |
 | Vida de los enemigos | **Sin tope** | Es lo que hace que la partida termine |
 | Daño de los enemigos | Sube poco | Que un solo error no te mate |
-| Tipos de enemigo | En minutos fijos | Cambian cómo juegas, no solo cuánto |
+| Tipos de enemigo y formaciones | En ventanas al azar | Cambian cómo juegas, no solo cuánto |
 
-Fases (números de partida, se ajustan con la simulación):
+Vida de los enemigos: **×1,27 por minuto desde el min 2**, sin saltos (antes era +25 %
+por minuto desde el min 4 y el doble cada 2 min desde el 8: daba una meseta cómoda y
+después una pared). Ajustado con la simulación.
+
+**Recta final:** cuando todo está al máximo (cupos llenos y nivel 5), subir de nivel ya
+no cura y la vida de los enemigos pasa a subir **×1,5 por minuto**. Después del techo ya
+no pasaba nada interesante y se podía seguir indefinidamente (17:21 y 14:56, «me dejé
+morir»); ahora una buena partida termina 2–3 min después de llegar al techo, en una
+pelea cada vez más difícil.
+
+Fases:
 
 | Minuto | Qué pasa | Para qué |
 |---|---|---|
 | 0–1 | Solo el básico, pocos y lentos; primera subida de nivel a los ~10–15 s | Quien juega 2 min ya eligió mejoras y sintió que crece: las recompensas van al principio |
-| 1–4 | Más enemigos hasta el tope; tipo **rápido y débil** (min 2) y **lento con mucha vida** (min 4) | Se arma la build; cada tipo pide otra respuesta |
-| 4–8 | Tope de cantidad; vida +25 % por minuto; **jefe** cada 3 min | La build se pone a prueba; el jefe marca hitos |
-| 8+ | La vida se duplica cada 2 min; las mejoras ya llegaron al techo | Aquí termina: mediana ~6–8 min, una buena partida pasa los 12 |
+| 1–4 | Más enemigos hasta el tope; llegan el **rápido y débil** y el **lento con mucha vida** | Se arma la build; cada tipo pide otra respuesta |
+| 4–8 | Tope de cantidad; los enemigos aceleran; **jefes** y **formaciones** | La build se pone a prueba; cada formación pide otra respuesta |
+| ~10+ | Las mejoras llegan al techo: **recta final** | Termina en 2–3 min, peleando |
 
-- **Olas con respiro:** ciclos de ~40 s (~30 s fuertes, ~10 s tranquilos) dentro de cada
-  fase, para recoger gemas y respirar.
+### Eventos al azar
+Lo que tenía fecha fija se volvía predecible (el anillo del min 6 sorprendía una vez).
+**Las curvas siguen el reloj, igual para todos** (vida, velocidad, daño, ritmo de
+aparición): así cada partida es igual de difícil en promedio y los récords se comparan.
+**Los eventos caen al azar dentro de ventanas**, distintos en cada partida:
+
+| Evento | Ventana |
+|---|---|
+| Llega el rápido | min 1:30–2:30 |
+| Llega el lento | min 3:30–4:30 |
+| Jefe | el primero entre el min 5 y el 7; después cada 2:30–3:30 |
+| Formación | la primera entre el min 5 y el 7; después cada 35–60 s |
+| Olas | 25–45 s fuertes y 8–12 s de respiro |
+
+**Formaciones:** una al azar entre las desbloqueadas, nunca la misma dos veces seguidas.
+
+| Formación | Desde | Qué es | Qué pide |
+|---|---|---|---|
+| **Anillo** | siempre | 15 enemigos en círculo fuera de la vista, con un hueco de ~60° | abrirse paso o salir por el hueco |
+| **Estampida** | siempre | fila de 8 rápidos que cruza en línea recta por donde estás | apartarse a tiempo |
+| **Muro** | min 7 | fila de 7 lentos que avanza en línea recta | rodearlo o romperlo |
+| **Anillo doble** | min 9 | dos anillos con los huecos en lados opuestos | elegir por dónde salir |
+
+- Desde el min 10, uno de cada tres enemigos de los anillos es lento.
+- Las de línea recta no persiguen: cruzan y desaparecen al alejarse.
+- **Aviso:** el anillo se ve venir (~2 s); la estampida y el muro arrancan lejos y se
+  anuncian ~2 s antes con tres flechas en el borde, del lado por donde vienen. Las
+  flechas de aviso (y la del jefe) van en `accent`, para no confundirse con enemigos.
+- Si no hay lugar en memoria, se liberan los enemigos más lejanos.
+
+Otros:
 - **Jefe:** un enemigo grande (~24 px) con mucha vida, sin ataques especiales.
 - **Sin enemigos que disparan** en la primera versión; pueden llegar después como un
   tipo nuevo.
 
 Justo:
 - La curva depende solo del **tiempo de juego** (el mismo del récord, que no corre en
-  pausa) y es igual para todos: nada de dificultad que se adapta a cómo vas.
+  pausa) y es igual para todos: nada de dificultad que se adapta a cómo vas. Lo único
+  al azar es cuándo y cuál evento, con el mismo reparto para todos.
 - Ningún enemigo aparece a menos de ~100 px del jugador: aparecen fuera de la vista.
 - Tras un golpe, ~0,5 s de invulnerabilidad (con su destello transitorio): no se muere
   de un solo golpe.
 - Un **modo difícil** (la misma curva, más rápida) con su propio récord queda para
   después.
 
-Cómo se ajusta: una herramienta de simulación (herramienta de desarrollo, como
-`llenado.ps1`) que, con `FIDGETS_SEED` y un bot simple (da vueltas esquivando, elige
-mejoras al azar), corre cientos de partidas sin ventana y mide cuánto duran. Objetivo:
-mediana del bot ~4–5 min, para que una persona que piensa sus mejoras llegue a 6–10.
+Cómo se ajusta: con la simulación (ver «Simulación»). Objetivo: mediana del bot
+~4–5 min, para que una persona que piensa sus mejoras llegue a 6–10.
 
 ### Celda, cantidad de enemigos y tarjetas
 Decidido con el prototipo (fotos a 200, 240 y 280, al 100 % y al 25 % de opacidad,
@@ -243,11 +301,57 @@ Consumo con la pantalla llena (54 enemigos, 3 ataques; `consumo.ps1` con
 `SWARM_FILL=1`): .exe 98,5 KB, memoria 1,79 MB, CPU en reposo 0 ms, dibujo 0,71 ms por
 frame. Todo dentro de los topes.
 
+### Simulación (paso 3)
+`herramientas\simular.ps1 [partidas] [semilla] [ms de reacción]` compila
+`herramientas\swarm_sim.c`, que incluye `swarm.c` tal cual (la misma lógica del widget),
+y juega cientos de partidas sin ventana con dos bots que eligen tarjetas al azar:
+- **jugador:** esquiva lo cercano, va por las gemas y, con un ataque de cerca, se acerca
+  a los enemigos hasta tenerlos a tiro;
+- **que solo huye:** nunca se acerca a nada (mide si escapar sin pelear alcanza).
+
+**Calibración con partidas reales** (registro `SWARM_LOG`, eligiendo siempre la primera
+tarjeta, que equivale a elegir al azar como el bot): disparo 5:06, aura 3:44, órbita
+4:14, onda 9:46; mediana ~4:40. Caen entre el bot de 156 y el de 200 ms: el bot
+decide cada **~175 ms** por defecto.
+
+Lo que salió de la simulación y de jugar:
+- **Hitos de experiencia:** se cumplen con cualquier bot: nivel 2 a ~0:10, nivel 5 a
+  ~0:50, nivel 15 a ~3:40, techo a ~10 min.
+- **Ataques iniciales parejados:** la órbita (daño 8 no mataba de un golpe al básico)
+  y el aura eran los peores. Subidos: órbita 10 / 14, aura 5 / 7 / 9.
+- **Huir sin pelear no alcanza** salvo con reflejos imposibles (~22 ms).
+- **Desde el min ~10 no se sentía difícil** (eligiendo a gusto: 17:21 en nivel 37, «me
+  dejé morir»): la cantidad dejaba de subir en el min 4, rodear al grupo funcionaba
+  demasiado bien y la onda y el aura neutralizaban todo. Arreglos: anillos, enemigos
+  que aceleran, resistencia del lento y el jefe, y la vida en una sola curva.
+- **Las gemas quedaban lejos** (la sobrante se sumaba a la más lejana): ahora te siguen.
+- **El disparo rendía poco al subir** (los proyectiles extra iban al mismo enemigo):
+  ahora cada uno va a un enemigo distinto.
+
+- **Después del techo no pasaba nada interesante** (con los arreglos: 14:56 en nivel 44,
+  «me dejé morir»; los anillos se notaban la primera vez y después no): recta final,
+  formaciones que rotan y eventos al azar.
+
+Hoy (formaciones, recta final y eventos al azar), 100 partidas por inicio:
+
+| Bot | Disparo | Aura | Órbita | Onda | Mediana | Tras el techo |
+|---|---|---|---|---|---|---|
+| ~175 ms (como una persona) | 5:19 | 5:04 | 4:54 | 4:24 | **5:00** | 0:52–2:00 |
+| 44 ms (una muy buena partida) | 11:21 | 10:55 | 10:37 | 11:40 | **11:04** | 2:00–3:04 |
+| ~175 ms, solo huye | | | | | 2:11 | |
+
+Mediana en el borde alto del objetivo (4–5 min), inicios a menos de 20 % entre sí y una
+buena partida termina 2–3 min después del techo.
+
+El registro (`SWARM_LOG`) anota también el segundo del techo (`techo=`, -1 si no llegó)
+y cada formación (`formacion=… segundo=…`).
+
 ## Por decidir
 
 - Confirmar con `llenado.ps1` que el nombre más largo («Velocidad», «Fire rate») cabe
   en la tarjeta y los márgenes de cada estado, en los dos idiomas.
-- Ajustar la curva con la simulación (paso 3).
+- Jugar otra tanda: ¿las formaciones sorprenden y se leen? ¿la recta final se siente
+  como un cierre y no como un corte? ¿eligiendo a gusto llega a 6–10 min?
 
 ## Lo que necesita la base
 - **Guardar un bloque de estado** (binario o hex) para la partida a medias; al leerlo,
