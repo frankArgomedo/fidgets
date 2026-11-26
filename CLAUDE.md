@@ -53,6 +53,8 @@ regla común (4 > 5).
 - `IDEAS.md`: banco de ideas para nuevos widgets (no va en los releases). Las ya
   desarrolladas tienen su archivo en `ideas/<nombre>.md`. Al empezar un widget, su
   idea sale de ahí y lo vigente pasa a la ficha.
+- Prototipo: un widget con un archivo `PROTOTIPO` en su carpeta se compila pero
+  `release.ps1` no lo publica. Se borra al terminarlo (ficha, ícono, README, CHANGELOG).
 - Comunicación entre widgets: `widget_post(L"nombre", code, value)` (no bloquea; no
   hace nada si el otro no está abierto) y `on_message` en el receptor. Los códigos
   `MSG_…` van en el encabezado que comparten (p.ej. `widgets/cube/keymap.h`).

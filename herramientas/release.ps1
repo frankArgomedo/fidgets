@@ -35,7 +35,12 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $stage = Join-Path $env:TEMP "fidgets_release"
 
 $docs = @("LICENSE", "README.md", "README.es.md")
-$widgets = Get-ChildItem (Join-Path $root "widgets") -Directory | Where-Object { Get-ChildItem $_.FullName -Filter *.c } | ForEach-Object Name
+# los widgets con un archivo PROTOTIPO en su carpeta se compilan pero no se publican
+$widgets = Get-ChildItem (Join-Path $root "widgets") -Directory |
+  Where-Object { (Get-ChildItem $_.FullName -Filter *.c) -and -not (Test-Path (Join-Path $_.FullName "PROTOTIPO")) } |
+  ForEach-Object Name
+$protos = Get-ChildItem (Join-Path $root "widgets") -Directory | Where-Object { Test-Path (Join-Path $_.FullName "PROTOTIPO") } | ForEach-Object Name
+if ($protos) { Write-Host "Prototipos (no se publican): $($protos -join ', ')" -ForegroundColor Yellow }
 $zips = @()
 
 function New-Zip($name, $exes) {
