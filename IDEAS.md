@@ -2,13 +2,17 @@
 
 Banco de ideas, sin compromiso. Cada una ya se pensó contra las reglas de `CLAUDE.md`;
 al empezar una, su ficha se escribe en el `.c` y la idea sale de esta lista.
+Las ideas ya desarrolladas tienen su propio archivo en `ideas/<nombre>.md` (decisiones
+tomadas, pendientes y por qué); al empezar el widget, ese archivo se borra y lo que
+quede vigente pasa a la ficha.
 
 ## Qué es un fidget
 
-Una actividad de segundos que **se empieza con un gesto, se abandona gratis, se entiende
-con opacidad baja y en reposo no cuesta nada**.
+Una actividad que **se empieza con un gesto, se puede soltar en cualquier momento sin
+perder nada, se entiende con opacidad baja y en reposo no cuesta nada**.
 
-- Llena un hueco de segundos o un par de minutos; una ronda es corta.
+- Llena un rato libre, pero lo que importa no es que sea corto, sino que se pueda
+  soltar: una partida puede ser infinita si pausar, ocultar y cerrar no cuestan nada.
 - Dejarlo no cuesta nada: ocultar, perder el foco o suspender nunca castigan.
 - Se lee de un vistazo: un dato grande, un aviso corto, nada más.
 - En reposo, `fps = 0`; celda chica.
@@ -20,6 +24,9 @@ teclado) y **ritmo** (tiempo real / por turnos).
 Hoy: `cube` (medición, teclado, tiempo real), `typing` (medición, teclado, tiempo
 real), `dot` (juego, mouse, tiempo real), `keys` (otro, acompañante). Falta: puzles por
 turnos, «otro» independiente, memoria y cálculo.
+
+Deja de ser un fidget si necesita progreso permanente entre partidas, un tutorial,
+sonido para jugar, conexión a internet o más de 320×320.
 
 ## Juguetes (tipo «otro»)
 
@@ -59,6 +66,9 @@ Sin reloj: no hace falta pausa ni aviso de foco.
 ## Tiempo real con teclado
 
 - **`worm`**: la serpiente clásica en ~160×160. Se pausa al perder el foco.
+- **`swarm`** (nombre provisional): survivors-like de bolsillo. Te mueves con WASD,
+  atacas solo y sobrevives a oleadas que crecen sin fin; al subir de nivel eliges una
+  mejora. Desarrollada en [ideas/swarm.md](ideas/swarm.md).
 
 ## Acompañantes
 
