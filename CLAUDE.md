@@ -50,6 +50,8 @@ regla común (4 > 5).
   su sección vive en el .ini del principal, lo abre y cierra el principal desde su
   menú y se cierra con él.
 - Datos grandes (listas, textos) en archivos junto al widget, incluidos con `#embed`.
+- `IDEAS.md`: banco de ideas para nuevos widgets (no va en los releases). Al empezar
+  uno, su idea sale de ahí.
 - Comunicación entre widgets: `widget_post(L"nombre", code, value)` (no bloquea; no
   hace nada si el otro no está abierto) y `on_message` en el receptor. Los códigos
   `MSG_…` van en el encabezado que comparten (p.ej. `widgets/cube/keymap.h`).
