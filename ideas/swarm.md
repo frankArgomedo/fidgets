@@ -47,14 +47,81 @@ escapar corriendo).
 - **Adorno** (números de daño, sacudir la pantalla, partículas): no se usan.
 - En reposo y en pausa, fps = 0.
 
+### Ataques y pasivas
+Unidades: vista de ~114 px hasta el borde, enemigos ≤ 75 px/s, enemigo básico con
+10 de vida al empezar. Números de partida: los ajusta la simulación.
+
+**Cupos:** hasta 3 ataques de 4 y 4 pasivas de 6, para que cada partida deje algo
+afuera y elegir importe. 7 cosas × 5 niveles = 35 niveles; el primer ataque empieza en
+nivel 1, así que son **34 subidas hasta el techo**.
+
+**Ataque inicial: lo eliges tú.** La partida empieza con una tarjeta de 4 opciones (en
+2×2), una por ataque, que se elige con clic o con 1–4. Es el único gesto para empezar
+(«Aviso para empezar») y el clic le da el teclado al widget.
+- Un solo récord: es una decisión dentro de la partida, como las demás tarjetas, no un
+  ajuste del menú que cambie la dificultad (la regla de un récord por combinación de
+  ajustes no aplica).
+- Por eso mismo, los 4 inicios deben ser parejos: la simulación corre el bot con cada
+  uno y sus medianas no deberían separarse más de ~20 %. Si uno gana siempre, se
+  ajustan sus números.
+- Cada ataque tiene que servir solo durante el primer minuto.
+
+**Tarjetas:** mejoras distintas al azar, entre subir algo que tienes y algo nuevo
+mientras haya cupo. Con todo al máximo, la tarjeta solo **cura 30**.
+
+| Ataque | Nivel 1 | Nv 2 | Nv 3 | Nv 4 | Nv 5 |
+|---|---|---|---|---|---|
+| **Disparo**: proyectil al enemigo más cercano en la vista; 180 px/s | 1 proyectil, daño 10, cada 1,0 s | 2 proyectiles | daño 15 | atraviesa 1 enemigo | 3 proyectiles, cada 0,8 s |
+| **Aura**: daña a todo lo que está dentro | radio 24 px, 4 de daño cada 0,5 s | radio 30 | daño 6 | radio 36 | daño 8 y frena 30 % |
+| **Órbita**: bolas de 8 px girando a tu alrededor | 1 bola a 32 px, una vuelta cada 2 s, daño 8 | 2 bolas | daño 12 | 3 bolas | a 40 px, una vuelta cada 1,5 s |
+| **Onda**: anillo que crece y empuja | cada 4 s, hasta 60 px en 0,3 s, daño 12, empuja 20 px | hasta 72 px | cada 3 s | daño 18 | hasta 84 px, empuja 32 |
+
+- Cada uno resuelve otra cosa: el disparo mata de a uno y desde lejos, el aura limpia
+  lo que se te pega, la órbita protege el anillo de en medio y la onda te saca cuando
+  te rodean. El nivel 5 de cada uno cambia cómo se juega.
+- Órbita y aura golpean a un mismo enemigo como máximo una vez cada 0,5 s (el daño no
+  depende de los fps).
+- El rastro y las evoluciones quedan para la segunda versión.
+
+| Pasiva | Por nivel | Al nivel 5 | A qué se aplica |
+|---|---|---|---|
+| **Daño** | +10 % | +50 % | todos los ataques |
+| **Cadencia** | −8 % de espera | −40 % | todo lo que se repite (disparo, golpes del aura, onda, vuelta de la órbita) |
+| **Alcance** | +10 % de radio | +50 % | aura, órbita, onda y tamaño del proyectil |
+| **Velocidad** | +8 % | 70 → ~98 px/s | tu movimiento |
+| **Imán** | +12 px | 16 → 76 px | radio para recoger gemas |
+| **Vida** | +20 máx. y +0,3/s de regeneración | 200 máx., 1,5/s | tú (100 al empezar; el básico quita 10 al tocarte) |
+
+Tensión buscada: empiezas a 70 px/s y el enemigo rápido va a 75; sin la pasiva de
+velocidad no puedes escapar de él, solo matarlo (tiene poca vida). Con nivel 2, sí.
+
+En las tarjetas: nombre (≤ 10 caracteres en los dos idiomas), un ícono de ~24 px
+dibujado con figuras (10 en total, segunda señal además del nombre) y el nivel como
+5 puntitos (no depende del idioma).
+
+| Español | English |
+|---|---|
+| Disparo | Shot |
+| Aura | Aura |
+| Órbita | Orbit |
+| Onda | Wave |
+| Daño | Damage |
+| Cadencia | Fire rate |
+| Alcance | Area |
+| Velocidad | Speed |
+| Imán | Magnet |
+| Vida | Health |
+
+En el juego, cada ataque tiene su forma: punto, anillo tenue, bolas, anillo que crece.
+
 ### Accesibilidad
 Las formas son la segunda señal además del color: jugador = círculo, enemigos =
 triángulos, gemas = rombos; el jefe se distingue por el tamaño.
 
 ### Curva de dificultad
 La partida termina cuando la amenaza supera el poder del jugador. **El poder tiene
-techo y la amenaza no**: cada mejora tiene nivel máximo (p.ej. 4 ataques y 6 pasivas
-de 5 niveles = 50 subidas); con todo al máximo, subir de nivel solo cura un poco. Así
+techo y la amenaza no**: cada mejora tiene nivel máximo y hay cupos (34 subidas hasta el
+techo, ver «Ataques y pasivas»); con todo al máximo, subir de nivel solo cura 30. Así
 la partida es infinita en las reglas pero siempre termina, y lo que dura lo deciden
 cómo juegas y qué eliges.
 
@@ -123,21 +190,8 @@ Enemigos visibles como máximo ≈ cobertura × área útil ÷ área de un enemi
 El juego se pausa y aparecen tarjetas con ícono (~24 px) y nombre (11 px); se eligen
 con clic o con 1, 2, 3. En 240 px caben 3 de ~70 px (~10–11 caracteres de nombre). Se
 decide con fotos (modo foto y `llenado.ps1` en cada idioma): si 3 no caben, quedan 2.
-
-### Ataques
-Cada uno resuelve un problema distinto, para que elegir tenga sentido:
-
-| Ataque | Qué resuelve | Costo |
-|---|---|---|
-| Disparo al enemigo más cercano | Daño a distancia, a un objetivo | Proyectiles (arreglo fijo) |
-| Aura alrededor del jugador | Los que se te pegan | Muy barato: sin entidades |
-| Órbita (bolas que giran a tu alrededor) | Defiende la periferia | Pocas entidades |
-| Onda cada ciertos segundos | Despeja cuando estás rodeado | Barato: un círculo que crece |
-| Rastro al moverte (opcional) | Castiga a los perseguidores; va con WASD | Pocas zonas |
-
-Mejoras pasivas: daño, cadencia, alcance, velocidad, imán de gemas, vida o
-regeneración. Empezar con los 4 primeros ataques; el rastro si sobra espacio.
-Evoluciones (combinar dos mejoras en una más fuerte): para una segunda versión.
+La tarjeta inicial de 4 ataques va en 2×2, aparte de esta decisión; también se
+comprueba con fotos.
 
 ## Lo que necesita la base
 - **Guardar un bloque de estado** (binario o hex) para la partida a medias; al leerlo,
