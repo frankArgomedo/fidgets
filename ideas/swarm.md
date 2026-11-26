@@ -49,7 +49,53 @@ escapar corriendo).
 
 ### Accesibilidad
 Las formas son la segunda señal además del color: jugador = círculo, enemigos =
-triángulos, gemas = rombos.
+triángulos, gemas = rombos; el jefe se distingue por el tamaño.
+
+### Curva de dificultad
+La partida termina cuando la amenaza supera el poder del jugador. **El poder tiene
+techo y la amenaza no**: cada mejora tiene nivel máximo (p.ej. 4 ataques y 6 pasivas
+de 5 niveles = 50 subidas); con todo al máximo, subir de nivel solo cura un poco. Así
+la partida es infinita en las reglas pero siempre termina, y lo que dura lo deciden
+cómo juegas y qué eliges.
+
+Qué sube:
+
+| Qué | Tope | Por qué |
+|---|---|---|
+| Enemigos por segundo | Los ~54 visibles (15 % de cobertura) | Más no deja ver por dónde escapar |
+| Velocidad de los enemigos | ~75 px/s | Límite para reaccionar a tiempo |
+| Vida de los enemigos | **Sin tope** | Es lo que hace que la partida termine |
+| Daño de los enemigos | Sube poco | Que un solo error no te mate |
+| Tipos de enemigo | En minutos fijos | Cambian cómo juegas, no solo cuánto |
+
+Fases (números de partida, se ajustan con la simulación):
+
+| Minuto | Qué pasa | Para qué |
+|---|---|---|
+| 0–1 | Solo el básico, pocos y lentos; primera subida de nivel a los ~10–15 s | Quien juega 2 min ya eligió mejoras y sintió que crece: las recompensas van al principio |
+| 1–4 | Más enemigos hasta el tope; tipo **rápido y débil** (min 2) y **lento con mucha vida** (min 4) | Se arma la build; cada tipo pide otra respuesta |
+| 4–8 | Tope de cantidad; vida +25 % por minuto; **jefe** cada 3 min | La build se pone a prueba; el jefe marca hitos |
+| 8+ | La vida se duplica cada 2 min; las mejoras ya llegaron al techo | Aquí termina: mediana ~6–8 min, una buena partida pasa los 12 |
+
+- **Olas con respiro:** ciclos de ~40 s (~30 s fuertes, ~10 s tranquilos) dentro de cada
+  fase, para recoger gemas y respirar.
+- **Jefe:** un enemigo grande (~24 px) con mucha vida, sin ataques especiales.
+- **Sin enemigos que disparan** en la primera versión; pueden llegar después como un
+  tipo nuevo.
+
+Justo:
+- La curva depende solo del **tiempo de juego** (el mismo del récord, que no corre en
+  pausa) y es igual para todos: nada de dificultad que se adapta a cómo vas.
+- Ningún enemigo aparece a menos de ~100 px del jugador: aparecen fuera de la vista.
+- Tras un golpe, ~0,5 s de invulnerabilidad (con su destello transitorio): no se muere
+  de un solo golpe.
+- Un **modo difícil** (la misma curva, más rápida) con su propio récord queda para
+  después.
+
+Cómo se ajusta: una herramienta de simulación (herramienta de desarrollo, como
+`llenado.ps1`) que, con `FIDGETS_SEED` y un bot simple (da vueltas esquivando, elige
+mejoras al azar), corre cientos de partidas sin ventana y mide cuánto duran. Objetivo:
+mediana del bot ~4–5 min, para que una persona que piensa sus mejoras llegue a 6–10.
 
 ## Por decidir
 
@@ -72,10 +118,6 @@ Enemigos visibles como máximo ≈ cobertura × área útil ÷ área de un enemi
   tipo, no con más cantidad. Arreglos fijos: memoria fija y ≤ 3 ms por frame.
 - Tiempo para reaccionar: desde el borde hay ~114 px hasta el jugador. Para ≥ 1,5 s,
   los enemigos no pasan de ~75 px/s.
-
-### Curva de dificultad
-Ajustarla para que una partida normal dure unos 5–10 min. Falta definir qué sube y
-cada cuánto (aparición, vida, velocidad, tipos).
 
 ### Tarjetas de mejora: 2 o 3
 El juego se pausa y aparecen tarjetas con ícono (~24 px) y nombre (11 px); se eligen
