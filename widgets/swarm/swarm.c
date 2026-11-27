@@ -13,6 +13,8 @@
  *                      en nivel 3 y el jugador no muere
  *   SWARM_LOG = ruta   al morir, agrega una línea a ese archivo con el ataque inicial,
  *                      el tiempo, el nivel y las mejoras (para calibrar la simulación)
+ *   SWARM_START = min  empieza en ese minuto (para probar), con las mejoras que tendrías
+ *                      a esa altura elegidas al azar; no cuenta para el récord
  */
 #include "widget.h"
 #include <windows.h>
@@ -21,7 +23,7 @@
 #define W 240
 #define H 240
 #define N_CARDS 3   /* tarjetas al subir de nivel */
-#define MAXE 64     /* enemigos en memoria: los ~54 visibles más los que vienen llegando */
+#define MAXE 96     /* enemigos en memoria: los ~54 visibles, los que vienen llegando y una formación */
 #define MAXP 32     /* proyectiles */
 #define MAXG 32     /* gemas */
 #define PI 3.14159265f
@@ -103,8 +105,20 @@ static const float EN_SPD[EN_TYPES]  = { 40, 75, 25, 35 };
 static const float EN_DMG[EN_TYPES]  = { 10, 6, 15, 20 };
 static const int   EN_XP[EN_TYPES]   = { 1, 1, 3, 0 };   /* el jefe deja la gema grande */
 
-/* straight = 1: va en línea recta (vx, vy) y desaparece al alejarse (estampida, muro) */
-typedef struct { float x, y, hp, orb_cd, flash, vx, vy; int type, alive, wave_id, straight; } Enemy;
+/* embestida del jefe: camina; cada CH_EVERY s, si se ve, se para CH_AIM_T s marcando la
+ * dirección (hacia donde estabas) y se lanza en línea recta CH_DASH_T s a CH_SPD */
+enum { CH_WALK, CH_AIM, CH_DASH };
+#define CH_EVERY  4.0f
+#define CH_AIM_T  0.8f
+#define CH_DASH_T 1.8f
+#define CH_SPD    110.0f   /* ~3 veces su paso; recorre ~200 px: arranca en el borde y se pasa de largo */
+/* fuera de la vista no camina: encadena embestidas con CH_FAR_AIM_T de pausa (~95 px/s
+ * de media, casi tu velocidad máxima: solo escapas huyendo en línea recta) */
+#define CH_FAR_AIM_T 0.3f
+
+/* straight = 1: va en línea recta (vx, vy) y desaparece al alejarse (estampida, muro);
+ * ch_*: embestida (solo el jefe) */
+typedef struct { float x, y, hp, orb_cd, flash, vx, vy, ch_t, ch_dx, ch_dy; int type, alive, wave_id, straight, ch_ph, ch_far; } Enemy;
 typedef struct { float x, y, vx, vy, life, dmg; int pierce, alive, last; } Shot;
 typedef struct { float x, y; int xp, big, alive; } Gem;
 static Enemy en[MAXE];
@@ -113,7 +127,7 @@ static Gem   gm[MAXG];
 
 /* ------------------------------------------------------------- estado */
 enum { START, PLAY, CARDS, RESULT };
-static int fill, start_attack;
+static int fill, start_attack, start_min;
 static wchar_t log_path[MAX_PATH];
 static int state = START, paused, focused, best, new_record;
 static float px, py, hp, invuln, game_t, spawn_acc, next_boss, ceil_t = -1;
@@ -122,6 +136,7 @@ static float shot_cd, aura_cd, orb_ang, wave_cd, wave_t = -1;
 static float t_fast, t_slow, next_form, surge_end, calm_end, warn_t, warn_a;
 static int last_form = -1;
 static int wave_id, level, xp, pending, held[4];
+static short level_t[64];   /* solo prototipo (SWARM_LOG): segundo de cada subida de nivel */
 static int card_item[4], card_n;
 
 static float view_r(void) { return sqrtf((float)(W * W + H * H)) / 2; }   /* centro -> esquina */
@@ -130,7 +145,11 @@ static int cap_visible(void) {   /* 15 % de cobertura con enemigos de 12 px: 54 
 }
 static float frand(void) { return (rnd() & 0xFFFFFF) / (float)0x1000000; }
 static float frange(float lo, float hi) { return lo + (hi - lo) * frand(); }
-static int xp_need(void) { return 5 + 4 * (level - 1); }
+/* experiencia para subir: 5, 9, 13… hasta un tope, porque la que entra deja de crecer
+ * hacia el min 5 (la aparición llega a su tope); sin él, las últimas tarjetas se
+ * espaciaban hasta ~30 s */
+#define XP_CAP 85
+static int xp_need(void) { int n = 5 + 4 * (level - 1); return n < XP_CAP ? n : XP_CAP; }
 
 /* curva de dificultad (ideas/swarm.md): multiplicadores según el minuto */
 #define HP_GROWTH 1.27f   /* vida de los enemigos: x1,27 por minuto desde el min 2, sin saltos */
@@ -144,7 +163,10 @@ static float hp_curve(float m) {
 static const float EN_SPD_MAX[4] = { 55, 75, 35, 35 };
 static float en_speed(int type, float m) {
     float t = m < 4 ? 0 : m > 12 ? 1 : (m - 4) / 8;
-    return EN_SPD[type] + (EN_SPD_MAX[type] - EN_SPD[type]) * t;
+    float v = EN_SPD[type] + (EN_SPD_MAX[type] - EN_SPD[type]) * t;
+    /* recta final: +10 % por minuto desde el techo, para que esquivar tampoco alcance */
+    if (ceil_t >= 0 && game_t > ceil_t) v *= 1 + 0.10f * (game_t - ceil_t) / 60;
+    return v;
 }
 /* el lento y el jefe resisten el empuje y el frenado (les afecta la mitad; al jefe, el
  * empuje no le afecta) */
@@ -159,6 +181,7 @@ static void spawn(int type, int on_screen) {
         else d = view_r() + EN_SIZE[type];
         e->x = px + cosf(a) * d; e->y = py + sinf(a) * d;
         e->type = type; e->alive = 1; e->flash = 0; e->orb_cd = 0; e->wave_id = -1; e->straight = 0;
+        e->ch_ph = CH_WALK; e->ch_t = 2; e->ch_far = 0;   /* la primera embestida, ~2 s después de verse */
         e->hp = EN_HP[type] * hp_curve(game_t / 60);
         return;
     }
@@ -253,7 +276,7 @@ static void begin(int attack) {
     px = py = 0; hp = hp_max(); invuln = 0; game_t = 0; spawn_acc = 0; ceil_t = -1;
     /* ventanas (ideas/swarm.md): mismo reparto para todos, distinto en cada partida */
     t_fast = frange(90, 150); t_slow = frange(210, 270);
-    next_boss = frange(300, 420); next_form = frange(300, 420); last_form = -1; warn_t = 0;
+    next_boss = frange(210, 270); next_form = frange(150, 210); last_form = -1; warn_t = 0;
     surge_end = frange(25, 45); calm_end = surge_end + frange(8, 12);
     shot_cd = aura_cd = wave_cd = 0; orb_ang = 0; wave_t = -1; wave_id = 0;
     level = 1; xp = 0; pending = 0; paused = 0; new_record = 0;
@@ -262,6 +285,19 @@ static void begin(int attack) {
         for (int i = 0; i < cap_visible(); i++) spawn(pick_type(), 1);
         spawn(EN_BOSS, 0);
         for (int i = 0; i < 12; i++) drop_gem(px + (frand() - 0.5f) * W * 0.8f, py + (frand() - 0.5f) * H * 0.8f, 1, 0);
+    }
+    if (start_min && !fill) {   /* SWARM_START: salta a ese minuto con mejoras al azar */
+        game_t = start_min * 60.0f;
+        next_form = game_t + frange(5, 15); next_boss = game_t + frange(20, 40);
+        int target = 1 + (int)(game_t / 16);   /* nivel típico a esa altura (simulación: ~1 cada 16 s) */
+        if (target > 63) target = 63;
+        while (level < target) {
+            level++; level_t[level] = (short)game_t; pending = 1;
+            deal_cards();
+            if (state != CARDS) break;   /* todo al máximo: deal_cards marcó el techo */
+            choose((int)(rnd() % (unsigned)card_n));
+        }
+        pending = 0; hp = hp_max();
     }
     state = PLAY;
     widget_set_fps(FPS_MOVE);
@@ -284,18 +320,26 @@ static void log_run(void) {
     if (!log_path[0]) return;
     char b[256];
     int c = ceil_t < 0 ? -1 : (int)ceil_t;
-    int n = wsprintfA(b, "inicio=%s tiempo=%d:%02d segundos=%d nivel=%d techo=%d mejoras=", ID[start_attack],
-                      (int)game_t / 60, (int)game_t % 60, (int)game_t, level, c);
+    int n = wsprintfA(b, "inicio=%s desde_min=%d tiempo=%d:%02d segundos=%d nivel=%d techo=%d mejoras=", ID[start_attack],
+                      start_min, (int)game_t / 60, (int)game_t % 60, (int)game_t, level, c);
     for (int i = 0; i < IT_COUNT; i++) if (lvl[i]) n += wsprintfA(b + n, "%s%d,", ID[i], lvl[i]);
     b[n - 1] = '\r'; b[n++] = '\n';   /* la última coma pasa a ser el fin de línea */
     log_line(b, n);
+    {   /* segundo en que salió cada tarjeta (subida a nivel 2, 3, ...) */
+        char t[400];
+        int k = wsprintfA(t, "  tarjetas=");
+        for (int l = 2; l <= level && l < 64 && k < 380; l++) k += wsprintfA(t + k, "%d,", level_t[l]);
+        if (level < 2) k += wsprintfA(t + k, "-,");
+        t[k - 1] = '\r'; t[k++] = '\n';
+        log_line(t, k);
+    }
 }
 
 static void game_over(void) {
     log_run();
     state = RESULT;
     int t = (int)game_t;
-    new_record = t > best;
+    new_record = !start_min && t > best;   /* empezar más adelante (SWARM_START) no vale */
     if (new_record) { best = t; cfg_set_int(L"best", best); }
     widget_set_fps(0);
 }
@@ -328,11 +372,19 @@ static void fire(void) {
 }
 
 /* ------------------------------------------------------------ formaciones
- * Desde un momento al azar entre el min 5 y el 7, cada 35–60 s, una formación al azar
+ * Desde un momento al azar entre el min 2:30 y el 3:30, cada 35–60 s, una formación al azar
  * entre las ya desbloqueadas, nunca la misma dos veces seguidas. Aparecen fuera de la
  * vista; la estampida y el muro se anuncian con una flecha en el borde (warn_*). */
 enum { F_RING, F_STAMPEDE, F_WALL, F_DOUBLE, F_COUNT };
-static const float F_UNLOCK[F_COUNT] = { 0, 0, 7 * 60, 9 * 60 };   /* desde qué segundo */
+/* el muro avanza recto y, si vas hacia una punta, se corre de costado (hasta WALL_SLIDE
+ * px/s) para quedar frente a ti: no se rodea ni con la velocidad al máximo (desde los
+ * 100 px ganas 33 px/s y faltan ~165 en los ~5 s que tarda en llegar); queda buscar el
+ * hueco (a menos de 40 px del centro) o romperlo. wall_c*: su centro; wall_n*: un costado */
+#define WALL_SLIDE 65.0f
+#define WALL_FREE  100.0f
+static int wall_on;
+static float wall_cx, wall_cy, wall_vx, wall_vy, wall_nx, wall_ny;
+static const float F_UNLOCK[F_COUNT] = { 0, 0, 5 * 60, 7 * 60 };   /* desde qué segundo */
 
 /* deja al menos n lugares libres: si no hay, se liberan los enemigos más lejanos */
 static void make_room(int n) {
@@ -354,6 +406,7 @@ static Enemy *place(int type, float x, float y, float vx, float vy) {
         Enemy *e = &en[i];
         e->x = x; e->y = y; e->vx = vx; e->vy = vy; e->straight = vx != 0 || vy != 0;
         e->type = type; e->alive = 1; e->flash = 0; e->orb_cd = 0; e->wave_id = -1;
+        e->ch_ph = CH_WALK; e->ch_t = 2; e->ch_far = 0;
         e->hp = EN_HP[type] * hp_curve(game_t / 60);
         return e;
     }
@@ -368,14 +421,22 @@ static void ring_at(float r, float gap_a, float m) {
     }
 }
 
-/* fila de n enemigos que entra desde el ángulo a y cruza en línea recta por donde
- * está el jugador */
-static void line_at(int type, int n, float spacing, float a, float spd, float lead) {
+/* fila de n enemigos, más ancha que la vista, que entra desde el ángulo a y cruza en
+ * línea recta por donde está el jugador, con un hueco de 3 lugares cerca del medio (al
+ * azar) por donde pasar; hp_x multiplica la vida (el muro aguanta). rows filas, cada
+ * una 14 px más atrás y corrida medio lugar (una franja), con el hueco en todas */
+static void line_at(int type, int n, float spacing, float a, float spd, float lead, float hp_x, int rows) {
     /* arranca a lead segundos de entrar en la vista: lo que dura el aviso */
-    float ca = cosf(a), sa = sinf(a), r = W / 2.0f + spd * lead;
-    for (int k = 0; k < n; k++) {
-        float o = (k - (n - 1) / 2.0f) * spacing;
-        place(type, px + ca * r - sa * o, py + sa * r + ca * o, -ca * spd, -sa * spd);
+    float ca = cosf(a), sa = sinf(a);
+    int gap = n / 2 - 4 + (int)(rnd() % 6u);   /* primer lugar del hueco */
+    for (int row = 0; row < rows; row++) {
+        float r = W / 2.0f + spd * lead + row * 14;
+        for (int k = 0; k < n; k++) {
+            if (k >= gap && k < gap + 3) continue;
+            float o = (k - (n - 1) / 2.0f + row * 0.5f) * spacing;
+            Enemy *e = place(type, px + ca * r - sa * o, py + sa * r + ca * o, -ca * spd, -sa * spd);
+            if (e) e->hp *= hp_x;
+        }
     }
 }
 
@@ -390,12 +451,18 @@ static void formation(float m) {
         log_line(b, wsprintfA(b, "  formacion=%s segundo=%d\r\n", FN[f], (int)game_t));
     }
     float a = frand() * 2 * PI;
-    make_room(f == F_DOUBLE ? 30 : 15);
+    make_room(f == F_DOUBLE ? 30 : f == F_WALL ? 29 : f == F_STAMPEDE ? 38 : 15);
     switch (f) {
     case F_RING:     ring_at(view_r() + 10, a, m); break;
     case F_DOUBLE:   ring_at(view_r() + 10, a, m); ring_at(view_r() + 40, a + PI, m); break;
-    case F_STAMPEDE: line_at(EN_FAST, 8, 14, a, 75, 2); warn_a = a; warn_t = 2; break;
-    case F_WALL:     line_at(EN_SLOW, 7, 16, a, en_speed(EN_SLOW, m), 2); warn_a = a; warn_t = 2; break;
+    case F_STAMPEDE: line_at(EN_FAST, 22, 16, a, 75, 2, 1, 2); warn_a = a; warn_t = 2; break;   /* ~350 px, dos filas */
+    case F_WALL: {   /* ~510 px, ~37–49 px/s; se corre de lado para quedar frente a ti (ver tick) */
+        float spd = en_speed(EN_SLOW, m) * 1.4f, r = W / 2.0f + spd * 2;
+        line_at(EN_SLOW, 32, 16, a, spd, 2, 3, 1); warn_a = a; warn_t = 2;
+        wall_on = 1; wall_cx = px + cosf(a) * r; wall_cy = py + sinf(a) * r;
+        wall_vx = -cosf(a) * spd; wall_vy = -sinf(a) * spd; wall_nx = -sinf(a); wall_ny = cosf(a);
+        break;
+    }
     }
 }
 
@@ -418,10 +485,27 @@ static void tick(float dt) {
     float rate = 0.7f + 2.8f * (m < 4 ? m / 4 : 1);
     rate *= game_t < surge_end ? 1.3f : 0.4f;
     spawn_acc += rate * dt;
-    while (spawn_acc >= 1) { spawn_acc -= 1; if (fill || alive < cap_visible()) { spawn(pick_type(), 0); alive++; } }
-    if (game_t >= next_boss) { spawn(EN_BOSS, 0); next_boss += frange(150, 210); }
+    /* 3 s antes de una formación no aparecen sueltos: llega con la pantalla más despejada */
+    int quiet = !fill && next_form - game_t < 3;
+    while (spawn_acc >= 1) { spawn_acc -= 1; if (!quiet && (fill || alive < cap_visible())) { spawn(pick_type(), 0); alive++; } }
+    if (game_t >= next_boss) { spawn(EN_BOSS, 0); next_boss += frange(90, 150); }
     if (game_t >= next_form) { formation(m); next_form += frange(35, 60); }
     if (warn_t > 0) warn_t -= dt;
+    if (wall_on) {   /* el muro se corre de lado hacia ti (los lentos en fila son los del muro) */
+        wall_cx += wall_vx * dt; wall_cy += wall_vy * dt;
+        /* solo si te alejas más de WALL_FREE de su centro (vas hacia una punta): cerca del
+         * centro, donde cae el hueco, no se mueve y llegar al hueco no cuesta */
+        float lat = (px - wall_cx) * wall_nx + (py - wall_cy) * wall_ny, mv = WALL_SLIDE * dt;
+        lat = lat > WALL_FREE ? lat - WALL_FREE : lat < -WALL_FREE ? lat + WALL_FREE : 0;
+        if (lat > mv) lat = mv;
+        if (lat < -mv) lat = -mv;
+        wall_cx += wall_nx * lat; wall_cy += wall_ny * lat;
+        int left = 0;
+        for (int i = 0; i < MAXE; i++) if (en[i].alive && en[i].straight && en[i].type == EN_SLOW) {
+            en[i].x += wall_nx * lat; en[i].y += wall_ny * lat; left++;
+        }
+        if (!left) wall_on = 0;
+    }
 
     /* enemigos: van hacia el jugador, se empujan entre sí, reaparecen por delante */
     float aura_r = lvl[IT_AURA] ? AURA_R[lvl[IT_AURA] - 1] * area_mul() : 0;
@@ -441,14 +525,29 @@ static void tick(float dt) {
             }
             continue;
         }
-        if (d > far_d && e->type != EN_BOSS) {
+        if (d > far_d && e->type != EN_BOSS) {   /* quedó atrás: reaparece por delante (el jefe no: te alcanza embistiendo) */
             float a = (mx || my) ? atan2f(my, mx) + (frand() - 0.5f) * 2.0f : frand() * 2 * PI;
             e->x = px + cosf(a) * (view_r() + EN_SIZE[e->type]); e->y = py + sinf(a) * (view_r() + EN_SIZE[e->type]);
             continue;
         }
-        float v = en_speed(e->type, m);
-        if (lvl[IT_AURA] == 5 && d < aura_r) v *= 1 - 0.3f * resist(e->type);
-        e->x += dx / d * v * dt; e->y += dy / d * v * dt;
+        float v = en_speed(e->type, m), ux = dx / d, uy = dy / d;
+        if (e->type == EN_BOSS) {   /* embestida: se para, marca la dirección y se lanza */
+            int seen = fabsf(dx) < W / 2.0f && fabsf(dy) < H / 2.0f;   /* su centro está en la pantalla */
+            e->ch_t -= dt;
+            if (e->ch_far && seen && e->ch_ph != CH_WALK) {   /* volvió a la vista: corta y camina */
+                e->ch_far = 0; e->ch_ph = CH_WALK; e->ch_t = 2;
+            }
+            if (e->ch_ph == CH_WALK && !seen) {   /* lejos: encadena embestidas hacia ti */
+                e->ch_far = 1; e->ch_ph = CH_AIM; e->ch_t = CH_FAR_AIM_T; e->ch_dx = ux; e->ch_dy = uy;
+            } else if (e->ch_ph == CH_WALK && e->ch_t <= 0) {   /* a la vista, cada CH_EVERY s */
+                e->ch_far = 0; e->ch_ph = CH_AIM; e->ch_t = CH_AIM_T; e->ch_dx = ux; e->ch_dy = uy;
+            } else if (e->ch_ph == CH_AIM && e->ch_t <= 0) { e->ch_ph = CH_DASH; e->ch_t = CH_DASH_T; }
+            else if (e->ch_ph == CH_DASH && e->ch_t <= 0) { e->ch_ph = CH_WALK; e->ch_t = e->ch_far ? 0 : CH_EVERY; }
+            if (e->ch_ph == CH_AIM) v = 0;
+            if (e->ch_ph == CH_DASH) { v = CH_SPD; ux = e->ch_dx; uy = e->ch_dy; }
+        }
+        if (lvl[IT_AURA] == 5 && d < aura_r && e->ch_ph != CH_DASH) v *= 1 - 0.3f * resist(e->type);
+        e->x += ux * v * dt; e->y += uy * v * dt;
         float rr = EN_SIZE[e->type] / 2 + 6;
         if (d < rr && invuln <= 0 && !fill) {
             hp -= EN_DMG[e->type] * edmg;
@@ -460,9 +559,13 @@ static void tick(float dt) {
         float dx = en[j].x - en[i].x, dy = en[j].y - en[i].y, md = (EN_SIZE[en[i].type] + EN_SIZE[en[j].type]) / 2;
         float d2 = dx * dx + dy * dy;
         if (d2 >= md * md || d2 < 0.0001f) continue;
-        float d = sqrtf(d2), push = (md - d) * 0.5f;
+        /* las filas (estampida, muro) no se deforman: empujan a los demás y nadie las empuja */
+        int si = en[i].straight || en[i].ch_ph == CH_DASH, sj = en[j].straight || en[j].ch_ph == CH_DASH;   /* el jefe embistiendo, tampoco */
+        if (si && sj) continue;
+        float d = sqrtf(d2), push = (md - d) * (si || sj ? 1 : 0.5f);
         dx /= d; dy /= d;
-        en[i].x -= dx * push; en[i].y -= dy * push; en[j].x += dx * push; en[j].y += dy * push;
+        if (!si) { en[i].x -= dx * push; en[i].y -= dy * push; }
+        if (!sj) { en[j].x += dx * push; en[j].y += dy * push; }
     }
 
     /* ataques */
@@ -513,7 +616,7 @@ static void tick(float dt) {
                 float dx = en[k].x - px, dy = en[k].y - py, d = sqrtf(dx * dx + dy * dy) + 0.001f;
                 if (d > r + EN_SIZE[en[k].type] / 2) continue;
                 en[k].wave_id = wave_id;
-                if (en[k].type != EN_BOSS) {
+                if (en[k].type != EN_BOSS && !en[k].straight) {
                     float pu = WAVE_PUSH[L] * resist(en[k].type);
                     en[k].x += dx / d * pu; en[k].y += dy / d * pu;
                 }
@@ -530,7 +633,7 @@ static void tick(float dt) {
         if (d < 8) {
             g->alive = 0;
             xp += g->big ? (xp_need() - xp > g->xp ? xp_need() - xp : g->xp) : g->xp;
-            while (xp >= xp_need()) { xp -= xp_need(); level++; pending++; }
+            while (xp >= xp_need()) { xp -= xp_need(); level++; pending++; if (level < 64) level_t[level] = (short)game_t; }
         } else if (d < magnet()) { g->x += dx / d * 220 * dt; g->y += dy / d * 220 * dt; }
     }
     if (pending > 0 && !fill) deal_cards();
@@ -570,7 +673,8 @@ static void diamond(float cx, float cy, float h, Color c) {
 static void draw_enemy(const Enemy *e) {
     float x = sx(e->x), y = sy(e->y), s = EN_SIZE[e->type];
     Color c = gc(e->flash > 0 ? color_mix(COL_ENEMY, COL_PLAYER, 0.6f) : COL_ENEMY);
-    float a = atan2f(py - e->y, px - e->x);
+    /* apunta hacia donde va: al jugador, o en su línea recta si es de una fila */
+    float a = e->straight ? atan2f(e->vy, e->vx) : atan2f(py - e->y, px - e->x);
     switch (e->type) {
     case EN_BASIC: tri(x, y, a, s, s * 0.5f, c); break;
     case EN_FAST:  tri(x, y, a, s * 1.2f, s * 0.3f, c); break;
@@ -586,7 +690,9 @@ static void boss_arrow(void) {
         float a = atan2f(y - H / 2.0f, x - W / 2.0f), ca = cosf(a), sa = sinf(a);
         float lim = MARGIN + 6, kx = (W / 2.0f - lim) / (fabsf(ca) + 1e-4f), ky = (H / 2.0f - lim) / (fabsf(sa) + 1e-4f);
         float k = kx < ky ? kx : ky;
-        tri(W / 2.0f + ca * k, H / 2.0f + sa * k, a, 11, 5, gc(theme->accent));   /* aviso: no es un enemigo */
+        /* aviso: no es un enemigo; late (más grande) con cada embestida con que se acerca */
+        int big = en[i].ch_ph == CH_DASH;
+        tri(W / 2.0f + ca * k, H / 2.0f + sa * k, a, big ? 15 : 11, big ? 7 : 5, gc(theme->accent));
     }
 }
 
@@ -674,6 +780,12 @@ static void draw(void) {
         for (int x = MARGIN + g - ox; x < W - MARGIN; x += g) gfx_rect(x, y, 1, 1, theme->line);
 
     for (int i = 0; i < MAXG; i++) if (gm[i].alive) diamond(sx(gm[i].x), sy(gm[i].y), gm[i].big ? 5 : gm[i].xp > 3 ? 4 : 3, gc(COL_GEM));   /* la que acumula, más grande */
+    /* aviso de embestida: línea de puntos por donde va a pasar el jefe (información) */
+    for (int i = 0; i < MAXE; i++) if (en[i].alive && en[i].ch_ph == CH_AIM && !en[i].ch_far) {
+        float x = sx(en[i].x), y = sy(en[i].y), len = CH_SPD * CH_DASH_T;
+        for (float k = EN_SIZE[EN_BOSS] / 2 + 4; k < len; k += 8)
+            gfx_circle(x + en[i].ch_dx * k, y + en[i].ch_dy * k, 1.5f, gc(theme->accent));
+    }
     for (int i = 0; i < MAXE; i++) if (en[i].alive) draw_enemy(&en[i]);
     float cx = W / 2.0f, cy = H / 2.0f;
     if (lvl[IT_AURA]) {
@@ -765,6 +877,9 @@ static void init(void) {
     wchar_t v[8];
     if (GetEnvironmentVariableW(L"SWARM_FILL", v, 8) > 0) fill = 1;
     if (GetEnvironmentVariableW(L"SWARM_LOG", log_path, MAX_PATH) >= MAX_PATH) log_path[0] = 0;
+    if (GetEnvironmentVariableW(L"SWARM_START", v, 8) > 0)
+        for (int i = 0; v[i] >= L'0' && v[i] <= L'9' && start_min < 30; i++) start_min = start_min * 10 + (v[i] - L'0');
+    if (start_min > 30) start_min = 30;
     best = cfg_get_range(L"best", 0, 0, 1000000);
 }
 

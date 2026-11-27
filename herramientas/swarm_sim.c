@@ -85,6 +85,12 @@ static void bot(void) {
 
 typedef struct { float end, t2, t5, t15, tcap; int level; } Run;
 
+/* segundo de cada subida de nivel (todas las partidas del bot jugador), para ver el
+ * ritmo de las tarjetas */
+#define LV_N 40
+static float lv_t[LV_N][4000];
+static int lv_runs;
+
 static Run play(int attack) {
     Run r = { 0, -1, -1, -1, -1, 0 };
     best = 1 << 30;   /* nunca hay récord nuevo: la simulación no escribe el .ini */
@@ -102,6 +108,10 @@ static Run play(int attack) {
     }
     r.end = game_t;
     r.level = level;
+    if (bot_mode == BOT_PLAYER && lv_runs < 4000) {
+        for (int l = 2; l < LV_N; l++) lv_t[l][lv_runs] = l <= level ? level_t[l] : -1;
+        lv_runs++;
+    }
     return r;
 }
 
@@ -158,6 +168,16 @@ int main(int argc, char **argv) {
         char m[8];
         mmss(m, pct(all_end, na, 0.5f, &g));
         printf("mediana total: %s   (%d partidas; corte a los %d min)\n", m, na, (int)MAX_T / 60);
+        if (bot_mode == BOT_PLAYER) {   /* ritmo de las tarjetas */
+            printf("\ntarjetas (bot jugador, todos los inicios): segundo en que sale (mediana) y espera desde la anterior\n");
+            float prev = 0;
+            for (int l = 2; l < LV_N; l++) {
+                int got; float t = pct(lv_t[l], lv_runs, 0.5f, &got);
+                if (got * 2 < lv_runs) break;   /* menos de la mitad llega */
+                if (l <= 6 || l % 4 == 0 || l == 35) printf("  niv%-3d %5.0f s  (+%3.0f s)\n", l, t, t - prev);
+                prev = t;
+            }
+        }
     }
     return 0;
 }

@@ -21,6 +21,18 @@ Con `SWARM_LOG`, cada partida terminada (y cada formación) se anota en ese arch
 la variable no escribe nada. El simulador: `.\herramientas\simular.ps1` (ver
 «Simulación»).
 
+Para probar una parte sin empezar de cero, `SWARM_START` con el minuto (hasta 30):
+eliges el ataque y las mejoras que tendrías a esa altura (~1 cada 16 s) se eligen al
+azar; la vida, la velocidad y los eventos son los de ese minuto (la primera formación a
+los 5–15 s, el jefe a los 20–40 s). Desde el min 10 ya está todo al máximo: empieza en
+la recta final. No cuenta para el récord y el registro lo anota (`desde_min=`).
+
+```powershell
+$env:SWARM_START = 5; $env:SWARM_LOG = "$env:APPDATA\fidgets\swarm_partidas.txt"; .\bin\swarm.exe
+```
+
+Para volver a empezar de cero en esa misma consola: `Remove-Item Env:SWARM_START`.
+
 ## Decidido
 
 ### Partida infinita
@@ -137,7 +149,7 @@ Mismas unidades: el jugador empieza con 100 de vida y 70 px/s; vista de ~114 px.
 | **Básico** | triángulo, 12 px | 10 | 40 px/s | 10 | 1 XP | min 0 |
 | **Rápido** | triángulo estrecho que apunta hacia donde va, 10 px | 5 | 75 px/s (el tope) | 6 | 1 XP | min 1:30–2:30 |
 | **Lento** | cuadrado, 14 px | 40 | 25 px/s | 15 | 3 XP | min 3:30–4:30 |
-| **Jefe** | cuadrado grande con borde, 24 px | 300 | 35 px/s | 20 | gema grande: lo que falte para subir de nivel | min 5–7, y cada 2:30–3:30 |
+| **Jefe** | cuadrado grande con borde, 24 px | 300 | 35 px/s | 20 | gema grande: lo que falte para subir de nivel | min 3:30–4:30, y cada 1:30–2:30 |
 
 - Cada tipo pide otra respuesta: el básico es el relleno; del rápido no se escapa sin
   la pasiva de velocidad, pero muere con cualquier cosa; el lento se esquiva fácil pero
@@ -160,10 +172,10 @@ Proporción de tipos que aparecen:
 | 4+ | 60 % | 25 % | 15 % |
 
 - Aparición: ~0,7 enemigos/s al empezar, subiendo hasta el tope de ~54 visibles hacia
-  el min 4. Arreglo fijo de **64 enemigos** (los visibles más los que vienen llegando de
-  fuera de la vista).
+  el min 4. Arreglo fijo de **96 enemigos** (los visibles, los que vienen llegando de
+  fuera de la vista y una formación).
 - Todos van derecho hacia el jugador y **se empujan un poco entre sí** para no apilarse
-  en un punto (se ve cuántos hay; con 64 son ~2.000 comparaciones por frame).
+  en un punto (se ve cuántos hay; con 96 son ~4.500 comparaciones por frame).
 - El que queda a más de ~170 px reaparece por delante: escapar corriendo no quita la
   presión.
 - **Flecha al jefe:** mientras el jefe está fuera de la vista, una flecha en el borde de
@@ -176,14 +188,17 @@ Proporción de tipos que aparecen:
 - Tope de 32 gemas en memoria: con el tope lleno, la más lejana (la que quedó atrás)
   se suma a la nueva, que cae cerca del jugador. No se pierde experiencia y no queda
   lejos. La gema que acumula se ve más grande.
-- El nivel *n* pide **5 + 4·(n−1)** XP (5, 9, 13, 17…).
+- El nivel *n* pide **5 + 4·(n−1)** XP (5, 9, 13, 17…) **hasta un tope de 85** (desde
+  el nivel 21). La experiencia que entra deja de crecer hacia el min 5 (la aparición
+  llega a su tope); sin el tope, las últimas tarjetas se espaciaban hasta ~30 s («siento
+  que es algo más lento al final»). Con él, una cada ~15–18 s hasta el techo.
 
 | Hito | XP acumulada | Objetivo |
 |---|---|---|
 | Nivel 2 | 5 | ~10–15 s |
 | Nivel 5 | 44 | ~1 min |
 | Nivel 15 | 490 | ~4 min |
-| Techo (34 subidas) | 2.414 | ~11–12 min |
+| Techo (34 subidas) | 2.050 | ~9 min |
 
 - El techo llega más o menos cuando termina una buena partida: una normal termina con
   cupo libre, y curar 30 casi nunca se ve.
@@ -219,7 +234,10 @@ por minuto desde el min 4 y el doble cada 2 min desde el 8: daba una meseta cóm
 después una pared). Ajustado con la simulación.
 
 **Recta final:** cuando todo está al máximo (cupos llenos y nivel 5), subir de nivel ya
-no cura y la vida de los enemigos pasa a subir **×1,5 por minuto**. Después del techo ya
+no cura, la vida de los enemigos pasa a subir **×1,5 por minuto** y su velocidad **+10 %
+por minuto** (el rápido alcanza tu velocidad máxima a los ~3 min). Solo con la vida, una
+build que esquiva y regenera (velocidad y vida al máximo, sin daño) aguantaba 5:20
+esquivando («me dejé morir porque era largo»). Después del techo ya
 no pasaba nada interesante y se podía seguir indefinidamente (17:21 y 14:56, «me dejé
 morir»); ahora una buena partida termina 2–3 min después de llegar al techo, en una
 pelea cada vez más difícil.
@@ -230,8 +248,9 @@ Fases:
 |---|---|---|
 | 0–1 | Solo el básico, pocos y lentos; primera subida de nivel a los ~10–15 s | Quien juega 2 min ya eligió mejoras y sintió que crece: las recompensas van al principio |
 | 1–4 | Más enemigos hasta el tope; llegan el **rápido y débil** y el **lento con mucha vida** | Se arma la build; cada tipo pide otra respuesta |
-| 4–8 | Tope de cantidad; los enemigos aceleran; **jefes** y **formaciones** | La build se pone a prueba; cada formación pide otra respuesta |
-| ~10+ | Las mejoras llegan al techo: **recta final** | Termina en 2–3 min, peleando |
+| 2:30–4 | Primeras **formaciones** (anillo, estampida) | Se resuelven moviéndote, no con daño: llegan aunque la build sea débil |
+| 4–8 | Tope de cantidad; los enemigos aceleran; **jefes**; muro (5) y anillo doble (7) | La build se pone a prueba; cada formación pide otra respuesta |
+| ~9+ | Las mejoras llegan al techo: **recta final** | Termina en 2–3 min, peleando |
 
 ### Eventos al azar
 Lo que tenía fecha fija se volvía predecible (el anillo del min 6 sorprendía una vez).
@@ -243,8 +262,8 @@ aparición): así cada partida es igual de difícil en promedio y los récords s
 |---|---|
 | Llega el rápido | min 1:30–2:30 |
 | Llega el lento | min 3:30–4:30 |
-| Jefe | el primero entre el min 5 y el 7; después cada 2:30–3:30 |
-| Formación | la primera entre el min 5 y el 7; después cada 35–60 s |
+| Jefe | el primero entre el min 3:30 y el 4:30 (después de la primera formación); después cada 1:30–2:30 (~5 en una buena partida; si no matas uno a tiempo, el siguiente lo alcanza) |
+| Formación | la primera entre el min 2:30 y el 3:30; después cada 35–60 s |
 | Olas | 25–45 s fuertes y 8–12 s de respiro |
 
 **Formaciones:** una al azar entre las desbloqueadas, nunca la misma dos veces seguidas.
@@ -252,19 +271,49 @@ aparición): así cada partida es igual de difícil en promedio y los récords s
 | Formación | Desde | Qué es | Qué pide |
 |---|---|---|---|
 | **Anillo** | siempre | 15 enemigos en círculo fuera de la vista, con un hueco de ~60° | abrirse paso o salir por el hueco |
-| **Estampida** | siempre | fila de 8 rápidos que cruza en línea recta por donde estás | apartarse a tiempo |
-| **Muro** | min 7 | fila de 7 lentos que avanza en línea recta | rodearlo o romperlo |
-| **Anillo doble** | min 9 | dos anillos con los huecos en lados opuestos | elegir por dónde salir |
+| **Estampida** | siempre | franja de dos filas de 22 rápidos (~350 px, más ancha que la vista; la segunda 14 px atrás y corrida medio lugar) que cruza en línea recta por donde estás, con un hueco de 3 | llegar al hueco a tiempo (2 s de aviso) |
+| **Muro** | min 5 | fila de 32 lentos (~510 px) con **el triple de vida**, que avanza en línea recta a 1,4 veces el paso del lento (~37–49 px/s), con un hueco de 3 cerca del centro; **si vas hacia una punta, se corre de costado** (hasta 65 px/s) para quedar frente a ti | buscar el hueco o romper la pared: rodearlo ya no se puede |
+| **Anillo doble** | min 7 | dos anillos con los huecos en lados opuestos | elegir por dónde salir |
 
 - Desde el min 10, uno de cada tres enemigos de los anillos es lento.
-- Las de línea recta no persiguen: cruzan y desaparecen al alejarse.
+- **Muro que se corre de lado:** a menos de 100 px de su centro (donde cae el hueco, a
+  menos de 40 px) no se mueve de costado y llegar al hueco no cuesta; más allá se corre
+  hacia ti a 65 px/s. Ni con la velocidad al máximo (98) se rodea: desde los 100 px
+  ganas 33 px/s y faltan ~165 en los ~5 s que tarda en llegar. Con 510 px recto y sin
+  correrse «aún lo pude rodear». Se eligió frente a un muro en arco (sin perseguir,
+  pero rodeable corriendo hacia atrás y parecido al anillo), más largo (~1.000 px, no
+  cabe en memoria) y una pinza de dos muros (se escapa justo; se parece al anillo doble).
+- Las de línea recta no persiguen (salvo ese corrimiento del muro): cruzan y
+  desaparecen al alejarse. Nada las empuja
+  (ni los otros enemigos ni la onda): la fila no se deforma y aparta a los demás.
+- El hueco cae al azar cerca del medio. Antes eran de ~100 px y pasaban lejos si te
+  movías («las vi pasar muy lejos»); más anchas que la vista, te alcanzan siempre.
+- **Despeje:** 3 s antes de cada formación no aparecen enemigos sueltos, para que llegue
+  con la pantalla más vacía y se lea como un evento (con 54 en pantalla, 8 más no se
+  notaban).
 - **Aviso:** el anillo se ve venir (~2 s); la estampida y el muro arrancan lejos y se
   anuncian ~2 s antes con tres flechas en el borde, del lado por donde vienen. Las
   flechas de aviso (y la del jefe) van en `accent`, para no confundirse con enemigos.
 - Si no hay lugar en memoria, se liberan los enemigos más lejanos.
 
 Otros:
-- **Jefe:** un enemigo grande (~24 px) con mucha vida, sin ataques especiales.
+- **Jefe:** un enemigo grande (~24 px) con mucha vida y **embestida**: cada ~4 s, si
+  está a la vista, se para 0,8 s marcando con una línea de puntos `accent` hacia donde
+  estabas, y se lanza en línea recta a 110 px/s (~3 veces su paso) durante 1,8 s
+  (~200 px: arranca en el borde y se pasa de largo). Mientras embiste, nada lo empuja
+  ni lo frena. Pide mirarlo y apartarse a tiempo; antes era un lento grande y «solo es
+  tiempo» matarlo.
+- **Fuera de la vista, te alcanza embistiendo:** no camina, encadena embestidas hacia
+  ti con 0,3 s de pausa (~95 px/s de media, casi tu velocidad máxima: solo escapas
+  huyendo en línea recta con la velocidad al máximo). La flecha del borde late (más
+  grande) con cada embestida. Al entrar en la vista corta la embestida y vuelve a
+  caminar; nunca entra embistiendo sin la línea de aviso.
+  Antes te seguía a 35 px/s y con velocidad alta quedaba lejos («si escapaba los dejaba
+  muy lejos», 3 jefes a la vez sin enfrentarlos). Se descartaron: reaparecer por delante
+  como los demás (un jefe es único: «se teletransporta») y correr más rápido fuera de la
+  vista («medio raro»).
+  Otros juegos del género no teletransportan a sus jefes: te persiguen por el mapa y
+  tienen cómo alcanzarte (un salto), o el mapa es cerrado.
 - **Sin enemigos que disparan** en la primera versión; pueden llegar después como un
   tipo nuevo.
 
@@ -289,8 +338,8 @@ sobre fondo oscuro y claro).
   hay ~114 px hasta el jugador, ~1,5 s para el enemigo rápido (75 px/s). En 200 son
   ~94 px (1,25 s) y las tarjetas no dan para «Velocidad»; en 280 sobra espacio en el
   inicio y los enemigos se ven chicos.
-- **Enemigos:** tope de 54 visibles (15 % de cobertura con enemigos de 12 px) y 64 en
-  memoria. Se ve lleno pero se lee.
+- **Enemigos:** tope de 54 visibles (15 % de cobertura con enemigos de 12 px) y 96 en
+  memoria (los visibles, los que llegan y una formación entera). Se ve lleno pero se lee.
   Fórmula: visibles ≈ cobertura × área útil ÷ área de un enemigo; con más de ~20 % ya
   no se ve por dónde escapar. Al llegar al tope, la presión sube con más vida, no con
   más cantidad.
@@ -298,8 +347,8 @@ sobre fondo oscuro y claro).
 - **Sin panel en pausa ni al elegir:** el juego se atenúa (alfa /4), el fondo no.
 
 Consumo con la pantalla llena (54 enemigos, 3 ataques; `consumo.ps1` con
-`SWARM_FILL=1`): .exe 98,5 KB, memoria 1,79 MB, CPU en reposo 0 ms, dibujo 0,71 ms por
-frame. Todo dentro de los topes.
+`SWARM_FILL=1`): .exe 101 KB, memoria 1,79 MB, CPU en reposo 0 ms, dibujo 0,51–0,74 ms
+por frame (con 96 en memoria, igual que con 64). Todo dentro de los topes.
 
 ### Simulación (paso 3)
 `herramientas\simular.ps1 [partidas] [semilla] [ms de reacción]` compila
@@ -316,7 +365,7 @@ decide cada **~175 ms** por defecto.
 
 Lo que salió de la simulación y de jugar:
 - **Hitos de experiencia:** se cumplen con cualquier bot: nivel 2 a ~0:10, nivel 5 a
-  ~0:50, nivel 15 a ~3:40, techo a ~10 min.
+  ~0:50, nivel 15 a ~3:40, techo a ~10 min (~9 min con el tope de experiencia).
 - **Ataques iniciales parejados:** la órbita (daño 8 no mataba de un golpe al básico)
   y el aura eran los peores. Subidos: órbita 10 / 14, aura 5 / 7 / 9.
 - **Huir sin pelear no alcanza** salvo con reflejos imposibles (~22 ms).
@@ -343,15 +392,94 @@ Hoy (formaciones, recta final y eventos al azar), 100 partidas por inicio:
 Mediana en el borde alto del objetivo (4–5 min), inicios a menos de 20 % entre sí y una
 buena partida termina 2–3 min después del techo.
 
-El registro (`SWARM_LOG`) anota también el segundo del techo (`techo=`, -1 si no llegó)
-y cada formación (`formacion=… segundo=…`).
+Con estampida y muro grandes y el despeje: mediana **4:39** (disparo 5:03, aura 4:41,
+órbita 4:44, onda 4:22); solo huye 2:06.
+
+- **Formaciones que no se notaban** (2 partidas: 5:25 y 13:32, «me mataron», la recta
+  final «lo más apretado» pero sin corte de golpe): estampida y muro más anchos que la
+  vista, con hueco, que no se deforman, y despeje antes de cada formación.
+
+**Ritmo de las tarjetas** (bot de 44 ms para llegar al techo; mediana del segundo en que
+sale cada una). Antes del tope de experiencia, las últimas se espaciaban: +21 s en el
+nivel 28, +25 s en el 32, ~30 s cerca del techo (10:15). Con el tope de 85:
+
+| Nivel | 2 | 3 | 4 | 5 | 8 | 12 | 16 | 20 | 24 | 28 | 32 | 35 (techo) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Segundo | 10 | 20 | 31 | 48 | 96 | 164 | 234 | 299 | 367 | 431 | 498 | 548 |
+| Espera | 10 | 10 | 11 | 17 | 19 | 16 | 18 | 16 | 16 | 15 | 18 | 18 |
+
+Las tres primeras salen cada ~10 s y después cada ~15–18 s hasta el techo. Tus tiempos
+reales (13, 19, 32, 42, 63, 76, 98 s) coinciden con el bot.
+
+- **Formaciones tarde:** con la primera en el min 5–7, la mitad de las partidas
+  terminaba sin ver ninguna (las 3 tuyas). Ahora la primera llega en el min 2:30–3:30
+  (muro desde el 5, anillo doble desde el 7). Sola, no cambia la mediana (4:40).
+- Probado y descartado: pedir más experiencia al inicio para que todas las tarjetas
+  salieran cada ~18 s desde la primera. La build llegaba débil a la mitad (nivel 15 a
+  4:18 en vez de 3:37) y la mediana bajaba a 3:25.
+
+Hoy (formaciones desde el min 2:30 y tope de experiencia), 100 partidas por inicio:
+
+| Bot | Disparo | Aura | Órbita | Onda | Mediana | Tras el techo |
+|---|---|---|---|---|---|---|
+| ~175 ms (como una persona) | 5:15 | 4:42 | 4:41 | 4:48 | **4:50** | 1:47–2:26 |
+| 44 ms (una muy buena partida) | 10:46 | 11:44 | 11:24 | 11:37 | **11:16** | 2:50–3:56 |
+
+- **Jefe sin desafío y tarde** («es fácil matarlo, solo es tiempo»; con el primero en
+  el min 5–7, una partida normal no veía ninguno): embestida y primer jefe en el min
+  3:30–4:30. Con eso (el bot no lee el aviso; esquiva solo lo que tiene cerca):
+
+| Bot | Disparo | Aura | Órbita | Onda | Mediana | Tras el techo |
+|---|---|---|---|---|---|---|
+| ~175 ms (como una persona) | 4:36 | 4:21 | 4:15 | 4:17 | **4:22** | 1:16–2:14 |
+| 44 ms (una muy buena partida) | 10:41 | 10:01 | 10:52 | 11:30 | **10:55** | 2:43–3:33 |
+
+Con jefes cada 2:30–3:30 una buena partida veía ~3; ahora cada 1:30–2:30 (~5):
+
+| Bot | Disparo | Aura | Órbita | Onda | Mediana | Tras el techo |
+|---|---|---|---|---|---|---|
+| ~175 ms (como una persona) | 4:51 | 4:37 | 4:19 | 4:47 | **4:35** | 1:46–2:12 |
+| 44 ms (una muy buena partida) | 10:41 | 10:49 | 10:28 | 11:09 | **10:47** | 2:55–3:26 |
+
+- **Final largo, jefes que quedaban atrás y muro fácil de rodear** (15:24, techo en el
+  10:04, «me dejé morir porque era largo»): velocidad que sube en la recta final, jefe
+  que te alcanza embistiendo y muro de ~510 px más rápido.
+
+| Bot | Disparo | Aura | Órbita | Onda | Mediana | Tras el techo |
+|---|---|---|---|---|---|---|
+| ~175 ms (como una persona) | 4:55 | 4:33 | 4:21 | 4:19 | **4:29** | 1:41–2:18 |
+| 44 ms (una muy buena partida) | 9:52 | 8:59 | 10:45 | 11:12 | **10:31** | 2:21–2:41 |
+
+- **Estampida que se veía chica y muro que se rodeaba** (desde el min 5 con
+  `SWARM_START`: el jefe «volvía embistiendo», «el muro aún lo pude rodear», la
+  estampida «es pequeña»): estampida en doble fila y muro que se corre de lado.
+
+| Bot | Disparo | Aura | Órbita | Onda | Mediana | Tras el techo |
+|---|---|---|---|---|---|---|
+| ~175 ms (como una persona) | 4:43 | 4:18 | 4:13 | 4:38 | **4:32** | 1:29–2:15 |
+| 44 ms (una muy buena partida) | 9:50 | 10:19 | 10:17 | 10:54 | **10:25** | 2:20–2:54 |
+
+El registro (`SWARM_LOG`) anota también el segundo del techo (`techo=`, -1 si no llegó),
+cada formación (`formacion=… segundo=…`) y el segundo de cada tarjeta (`tarjetas=…`,
+desde el nivel 2).
 
 ## Por decidir
 
 - Confirmar con `llenado.ps1` que el nombre más largo («Velocidad», «Fire rate») cabe
   en la tarjeta y los márgenes de cada estado, en los dos idiomas.
-- Jugar otra tanda: ¿las formaciones sorprenden y se leen? ¿la recta final se siente
-  como un cierre y no como un corte? ¿eligiendo a gusto llega a 6–10 min?
+- Probado (1 partida, 5:28, «en general es más divertido»): la línea de puntos del jefe
+  se ve a tiempo y la estampida se lee («me metí por el hueco»).
+- Probado: el jefe que te alcanza embistiendo funciona («me podía librar un poco de la
+  presión por un momento, pero no quedaba lejos»).
+- Probar: ¿el muro que se corre de lado se siente justo o tramposo? ¿la estampida en
+  doble fila se nota? ¿la recta final cierra en 2–3 min aunque la build sea de esquivar?
+- **Jefe:** si la embestida no alcanza para hacerlo desafiante, una escolta (anillo de 8
+  básicos al bajar a la mitad de vida).
+- **Tipos de jefe** (para después): cada tipo con otro comportamiento y otra forma
+  (segunda señal, no solo color), la misma dificultad (la del reloj) y desbloqueados con
+  el tiempo como las formaciones. Sin niveles de dificultad por jefe (habría que leerlos
+  de un vistazo). Idea: uno que **salta** y cae cerca de ti, con un círculo de aviso
+  ~1 s antes.
 
 ## Lo que necesita la base
 - **Guardar un bloque de estado** (binario o hex) para la partida a medias; al leerlo,
